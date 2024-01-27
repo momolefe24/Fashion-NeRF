@@ -1,0 +1,12 @@
+__pycache__
+preprocessing/
+wandb/
+NeRF/
+.vscode
+.idea
+logs/
+checkpoints/
+results/
+experiments/
+tensorboard/
+ResShift/

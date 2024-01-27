@@ -1,0 +1,238 @@
+debug: 0
+sweeps: 0
+run_wandb: 0
+
+# ========================= Training intention
+question: 'Training ACGPN on Rail VITON data Using checkpoints from Original'
+impact: 'Using hyperparameter sweeps'
+intent: 'Run experiment tracking using wandb with original hyperparameters.' # What is the intent of the research
+what_does_it_have: 'Parser Based warping trained on Original data'
+rail_data: 'Contains 8 Unique Individual-Clothing Pairs'
+
+# ========================= Run Hyperparameters
+run_number: 1
+experiment_number: 1
+experiment_run: "experiment_{}/run_{}"
+run_from_number: 1
+experiment_from_number: 1
+experiment_from_run: "experiment_{}/run_{}"
+
+# ========================= Machine Hyperparameters
+res: "low_res"
+serial_batches: True
+load_last_step: False
+resize_or_crop: scale_width
+device: 1
+nThreads: 2
+gpu_ids: ""
+VITON_Model: ""
+wandb_name: wandb_name
+sweep_id: sweep_id
+cuda: true
+viton_batch_size: 1
+batchSize: 1
+
+
+# ========================= VITON dataset
+dataset_name: "Original"
+low_res_viton_dataset_name: "ACGPN"
+datapairs: test_pairs.txt
+
+
+# ========================= VITON information
+VITON_Name: "ACPGN"
+VITON_Type: "Parser_Free"
+datamode: "train"
+phase: 'test'
+
+# ========================= Directory
+rail_dir: "data/VITON/{}/processed/{}/{}"
+original_dir: "data/VITON/{}/processed/{}/{}"
+root_dir: "/home-mscluster/mmolefe/Playground/Synthesising Virtual Fashion Try-On with Neural Radiance Fields/Fashion-SuperNeRF"
+checkpoint_root_dir: "/gluster/mmolefe"
+dataset_root_dir: "/datasets/mmolefe"
+tensorboard_dir: "./tensorboard/{}/{}"
+results_dir: "./results/{}/{}"
+VITON_selection_dir: "VITON/{}/{}"
+
+# ================================= VGG ================================= 
+vgg_save_step_checkpoint_dir: "/checkpoints/{}/{}/steps"
+vgg_save_step_checkpoint: "%d_net_vgg19-dcbb9e9d.pth"
+vgg_load_step_checkpoint_dir: "/checkpoints/{}/{}/steps"
+vgg_load_step_checkpoint: "%d_net_vgg19-dcbb9e9d.pth"
+
+vgg_save_final_checkpoint_dir: "/checkpoints/{}/{}"
+vgg_save_final_checkpoint: "vgg19-dcbb9e9d.pth"
+vgg_load_final_checkpoint_dir: "/checkpoints/{}/{}"
+vgg_load_final_checkpoint: "vgg19-dcbb9e9d.pth"
+
+# ================================= G ================================= 
+g_save_step_checkpoint_dir: "/checkpoints/{}/{}/steps"
+g_save_step_checkpoint: "%d_net_G.pth"
+g_load_step_checkpoint_dir: "/checkpoints/{}/{}/steps"
+g_load_step_checkpoint: "%d_net_G.pth"
+
+g_save_final_checkpoint_dir: "/checkpoints/{}/{}"
+g_save_final_checkpoint: "latest_net_G.pth"
+g_load_final_checkpoint_dir: "/checkpoints/{}/{}"
+g_load_final_checkpoint: "latest_net_G.pth"
+
+
+# ================================= G1 ================================= 
+g1_save_step_checkpoint_dir: "/checkpoints/{}/{}/steps"
+g1_save_step_checkpoint: "%d_net_G1.pth"
+g1_load_step_checkpoint_dir: "/checkpoints/{}/{}/steps"
+g1_load_step_checkpoint: "%d_net_G1.pth"
+
+g1_save_final_checkpoint_dir: "/checkpoints/{}/{}"
+g1_save_final_checkpoint: "latest_net_G1.pth"
+g1_load_final_checkpoint_dir: "/checkpoints/{}/{}"
+g1_load_final_checkpoint: "latest_net_G1.pth"
+
+
+# ================================= G2 ================================= 
+g2_save_step_checkpoint_dir: "/checkpoints/{}/{}/steps"
+g2_save_step_checkpoint: "%d_net_G2.pth"
+g2_load_step_checkpoint_dir: "/checkpoints/{}/{}/steps"
+g2_load_step_checkpoint: "%d_net_G2.pth"
+
+g2_save_final_checkpoint_dir: "/checkpoints/{}/{}"
+g2_save_final_checkpoint: "latest_net_G2.pth"
+g2_load_final_checkpoint_dir: "/checkpoints/{}/{}"
+g2_load_final_checkpoint: "latest_net_G2.pth"
+
+
+# ================================= D ================================= 
+d_save_step_checkpoint_dir: "/checkpoints/{}/{}/steps"
+d_save_step_checkpoint: "%d_net_D.pth"
+d_load_step_checkpoint_dir: "/checkpoints/{}/{}/steps"
+d_load_step_checkpoint: "%d_net_D.pth"
+
+d_save_final_checkpoint_dir: "/checkpoints/{}/{}"
+d_save_final_checkpoint: "latest_net_D.pth"
+d_load_final_checkpoint_dir: "/checkpoints/{}/{}"
+d_load_final_checkpoint: "latest_net_D.pth"
+
+
+# ================================= D1 ================================= 
+d1_save_step_checkpoint_dir: "/checkpoints/{}/{}/steps"
+d1_save_step_checkpoint: "%d_net_D1.pth"
+d1_load_step_checkpoint_dir: "/checkpoints/{}/{}/steps"
+d1_load_step_checkpoint: "%d_net_D1.pth"
+
+d1_save_final_checkpoint_dir: "/checkpoints/{}/{}"
+d1_save_final_checkpoint: "latest_net_D1.pth"
+d1_load_final_checkpoint_dir: "/checkpoints/{}/{}"
+d1_load_final_checkpoint: "latest_net_D1.pth"
+
+# ================================= D2 ================================= 
+d2_save_step_checkpoint_dir: "/checkpoints/{}/{}/steps"
+d2_save_step_checkpoint: "%d_net_D2.pth"
+d2_load_step_checkpoint_dir: "/checkpoints/{}/{}/steps"
+d2_load_step_checkpoint: "%d_net_D2.pth"
+
+d2_save_final_checkpoint_dir: "/checkpoints/{}/{}"
+d2_save_final_checkpoint: "latest_net_D2.pth"
+d2_load_final_checkpoint_dir: "/checkpoints/{}/{}"
+d2_load_final_checkpoint: "latest_net_D2.pth"
+
+
+# ================================= D3 ================================= 
+d3_save_step_checkpoint_dir: "/checkpoints/{}/{}/steps"
+d3_save_step_checkpoint: "%d_net_D3.pth"
+d3_load_step_checkpoint_dir: "/checkpoints/{}/{}/steps"
+d3_load_step_checkpoint: "%d_net_D3.pth"
+
+d3_save_final_checkpoint_dir: "/checkpoints/{}/{}"
+d3_save_final_checkpoint: "latest_net_D3.pth"
+d3_load_final_checkpoint_dir: "/checkpoints/{}/{}"
+d3_load_final_checkpoint: "latest_net_D3.pth"
+
+# ================================= Unet ================================= 
+unet_save_step_checkpoint_dir: "/checkpoints/{}/{}/steps"
+unet_save_step_checkpoint: "%d_net_U.pth"
+unet_load_step_checkpoint_dir: "/checkpoints/{}/{}/steps"
+unet_load_step_checkpoint: "%d_net_U.pth"
+
+unet_save_final_checkpoint_dir: "/checkpoints/{}/{}"
+unet_save_final_checkpoint: "latest_net_U.pth"
+unet_load_final_checkpoint_dir: "/checkpoints/{}/{}"
+unet_load_final_checkpoint: "latest_net_U.pth"
+
+# ================================= Optimizer G ================================= 
+optimizer_G_save_step_checkpoint_dir: "/checkpoints/{}/{}/steps"
+optimizer_G_save_step_checkpoint: "%d_net_optimizer_G.pth"
+optimizer_G_load_step_checkpoint_dir: "/checkpoints/{}/{}/steps"
+optimizer_G_load_step_checkpoint: "%d_net_optimizer_G.pth"
+
+optimizer_G_save_final_checkpoint_dir: "/checkpoints/{}/{}"
+optimizer_G_save_final_checkpoint: "latest_net_optimizer_G.pth"
+optimizer_G_load_final_checkpoint_dir: "/checkpoints/{}/{}"
+optimizer_G_load_final_checkpoint: "latest_net_optimizer_G.pth"
+
+
+# ================================= Optimizer D ================================= 
+optimizer_D_save_step_checkpoint_dir: "/checkpoints/{}/{}/steps"
+optimizer_D_save_step_checkpoint: "%d_net_optimizer_D.pth"
+optimizer_D_load_step_checkpoint_dir: "/checkpoints/{}/{}/steps"
+optimizer_D_load_step_checkpoint: "%d_net_optimizer_D.pth"
+
+optimizer_D_save_final_checkpoint_dir: "/checkpoints/{}/{}"
+optimizer_D_save_final_checkpoint: "latest_net_optimizer_D.pth"
+optimizer_D_load_final_checkpoint_dir: "/checkpoints/{}/{}"
+optimizer_D_load_final_checkpoint: "latest_net_optimizer_D.pth"
+
+# =====================  Sweep Hyperparameters
+model: pix2pixHD
+netG: global # [global, local]
+ngf: 64
+norm: 'instance' # [instance, batch]
+n_downsample_global: 4
+n_blocks_global: 4
+n_blocks_local: 3
+n_local_enhancers: 1
+niter_fix_global: 0
+beta1: 0.5
+lr: 0.0002
+momentum: 0.5
+num_D: 2
+n_layers_D: 3
+ndf: 64
+lambda_feat: 10.0
+no_ganFeat_loss: false
+no_vgg_loss: false
+no_lsgan: false
+pool_size: 0
+use_dropout: false
+data_type: 32
+no_flip: true
+
+# ===================== Inference Hyperparameters
+how_many: 1000
+cluster_path: features_clustered_010
+use_encoded_image: False
+
+
+# ===================== Experiment Hyperparameters
+niter: 50   # opt.niter + opt.niter_decay = total number of epochs
+niter_decay: 50
+val_count: 20
+load_pretrain: '/checkpoints/label2city'
+which_epoch: 'latest'
+verbose: false
+continue_train: false
+
+# ===================== Logging Hyperparameters
+display_count: 1 # Frequency Of Saving Training Results As Images & Graphs
+print_step: 1 # Frequency Of Print Training Results On Screen'
+save_period: 1 # Frequency Of Saving Checkpoints At The End Of Epochs
+ 
+
+# ===================== Input/Output Hyperparameters
+loadSize: 512 
+fineSize: 512
+label_nc: 20
+input_nc: 3
+output_nc: 3
+
+

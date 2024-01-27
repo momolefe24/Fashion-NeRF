@@ -1,0 +1,351 @@
+debug: 0
+sweeps: 0
+run_wandb: 0
+
+# ========================= VITON Method
+opt_vton_yaml: 'yaml/hr_viton.yml'
+sweeps_yaml: 'sweeps/hr_viton.yml'
+
+question: 'Training HR_VITON on rail data using different hyperparameters'
+impact: 'High-resolution VITON for parser-based networks can generate higher fidelity images'
+intent: 'Pretrain parser based warping for HR_VITON and save the weights so that we can fine-tune on rail data ' # What is the intent of the research
+what_does_it_have: 'Parser Based warping trained on Original data'
+rail_data: 'Contains 8 Unique Individual-Clothing Pairs'
+
+
+# ========================= Run Hyperparameters
+
+experiment_from_number: 0
+run_from_number: 0
+experiment_from_run: 'experiment_{}/run_{}'
+run_number: 1
+experiment_run: 'experiment_{}/run_{}'
+experiment_number: 1
+
+# ----------- Method Load From Model
+
+warp_load_from_model: 'Rail'
+
+
+# ---------- DM-VTON: Parser_Based e2e
+warp_experiment_from_number: 1 # warp_experiment_from_dir
+warp_run_from_number: 6 # warp_experiment_from_dir
+warp_experiment_from_run: 'experiment_{}/run_{}'
+
+gen_experiment_from_number: 1  # gen_experiment_from_dir
+gen_run_from_number: 6 # gen_experiment_from_dir
+gen_experiment_from_run: 'experiment_{}/run_{}'
+
+gen_load_from_model: 'Rail'
+
+# ================================================= DM_VTON =================================================
+# Parser_Free warping
+parser_based_warp_experiment_from_number: 1 #parser_based_warp_experiment_from_dir
+parser_based_warp_run_from_number: 6 # parser_based_warp_experiment_from_dir
+parser_based_warp_experiment_from_run: 'experiment_{}/run_{}'
+
+parser_based_gen_experiment_from_number: 1 # parser_based_gen_experiment_from_dir
+parser_based_gen_run_from_number: 6 # parser_based_gen_experiment_from_dir
+parser_based_gen_experiment_from_run: 'experiment_{}/run_{}'
+
+
+# Parser_Free e2e
+parser_free_warp_experiment_from_number: 1 # parser_free_warp_experiment_from_dir
+parser_free_warp_run_from_number: 6 # parser_free_warp_experiment_from_dir
+parser_free_warp_experiment_from_run: 'experiment_{}/run_{}'
+
+parser_free_warp_load_from_model: 'Rail'
+
+parser_free_gen_experiment_from_number: 1 # parser_free_gen_experiment_from_dir
+parser_free_gen_run_from_number: 6 # parser_free_gen_experiment_from_dir
+parser_free_gen_experiment_from_run: 'experiment_{}/run_{}'
+parser_free_gen_load_from_model: 'Rail'
+
+
+# Parser_Based Warping
+warp_experiment_from_dir: 'VITON/{}/{}/{}' # This is 
+gen_experiment_from_dir: 'VITON/{}/{}/{}'
+
+# Parser Free Territory
+parser_based_warp_experiment_from_dir: 'VITON/{}/{}/{}'
+parser_based_gen_experiment_from_dir: 'VITON/{}/{}/{}'
+parser_free_warp_experiment_from_dir: 'VITON/{}/{}/{}'
+parser_free_gen_experiment_from_dir: 'VITON/{}/{}/{}'
+
+
+
+# ================================================= ACGPN =================================================
+
+vgg_experiment_from_dir: 'VITON/{}/{}/{}'
+g1_experiment_from_dir: 'VITON/{}/{}/{}'
+g2_experiment_from_dir: 'VITON/{}/{}/{}'
+g_experiment_from_dir: 'VITON/{}/{}/{}'
+d_experiment_from_dir: 'VITON/{}/{}/{}'
+unet_experiment_from_dir: 'VITON/{}/{}/{}'
+
+# vgg
+vgg_experiment_from_number: 1 #vgg_experiment_from_dir
+vgg_run_from_number: 6 # parser_based_warp_experiment_from_dir
+vgg_experiment_from_run: 'experiment_{}/run_{}'
+vgg_load_from_model: 'Original'
+
+# g1
+g1_experiment_from_number: 1 #g1_experiment_from_dir
+g1_run_from_number: 6 # parser_based_warp_experiment_from_dir
+g1_experiment_from_run: 'experiment_{}/run_{}'
+g1_load_from_model: 'Original'
+
+# g2
+g2_experiment_from_number: 1 #g2_experiment_from_dir
+g2_run_from_number: 6 # parser_based_warp_experiment_from_dir
+g2_experiment_from_run: 'experiment_{}/run_{}'
+g2_load_from_model: 'Original'
+
+# g
+g_experiment_from_number: 1 #g_experiment_from_dir
+g_run_from_number: 6 # parser_based_warp_experiment_from_dir
+g_experiment_from_run: 'experiment_{}/run_{}'
+g_load_from_model: 'Original'
+
+# d
+d_experiment_from_number: 1 #d_experiment_from_dir
+d_run_from_number: 6 # parser_based_warp_experiment_from_dir
+d_experiment_from_run: 'experiment_{}/run_{}'
+d_load_from_model: 'Original'
+
+# unet
+unet_experiment_from_number: 1 #unet_experiment_from_dir
+unet_run_from_number: 6 # parser_based_warp_experiment_from_dir
+unet_experiment_from_run: 'experiment_{}/run_{}'
+unet_load_from_model: 'Original'
+
+# ================================================= CP_VTON =================================================
+# Geographic Matching Module
+gmm_experiment_from_number: 1 #gmm_experiment_from_dir
+gmm_run_from_number: 6 # gmm_experiment_from_dir
+gmm_experiment_from_run: 'experiment_{}/run_{}'
+gmm_load_from_model: 'Original'
+gmm_experiment_from_dir: 'VITON/{}/{}/{}'
+
+
+# Try-On Module
+tom_experiment_from_number: 1 # tom_experiment_from_dir
+tom_run_from_number: 6 # tom_experiment_from_dir
+tom_experiment_from_run: 'experiment_{}/run_{}'
+tom_load_from_model: 'Original'
+tom_experiment_from_dir: 'VITON/{}/{}/{}'
+
+
+
+
+# ================================================= HR_VITON =================================================
+# TOCG
+tocg_experiment_from_number: 1 #tocg_experiment_from_dir
+tocg_run_from_number: 6 # tocg_experiment_from_dir
+tocg_experiment_from_run: 'experiment_{}/run_{}'
+tocg_load_from_model: 'Original'
+tocg_experiment_from_dir: 'VITON/{}/{}/{}'
+
+# TOCG
+tocg_discriminator_experiment_from_number: 1 #tocg_discriminator_experiment_from_dir
+tocg_discriminator_run_from_number: 6 # tocg_discriminator_experiment_from_dir
+tocg_discriminator_experiment_from_run: 'experiment_{}/run_{}'
+tocg_discriminator_load_from_model: 'Original'
+tocg_discriminator_experiment_from_dir: 'VITON/{}/{}/{}'
+
+# gen
+gen_experiment_from_number: 1 #gen_experiment_from_dir
+gen_run_from_number: 6 # gen_experiment_from_dir
+gen_experiment_from_run: 'experiment_{}/run_{}'
+gen_load_from_model: 'Original'
+gen_experiment_from_dir: 'VITON/{}/{}/{}'
+
+# gen
+gen_discriminator_experiment_from_number: 1 #gen_discriminator_experiment_from_dir
+gen_discriminator_run_from_number: 6 # gen_discriminator_experiment_from_dir
+gen_discriminator_experiment_from_run: 'experiment_{}/run_{}'
+gen_discriminator_load_from_model: 'Original'
+gen_discriminator_experiment_from_dir: 'VITON/{}/{}/{}'
+
+# ================================================= LADI_VITON =================================================
+# TPS
+tps_experiment_from_number: 1 #tps_experiment_from_dir
+tps_run_from_number: 6 # tps_experiment_from_dir
+tps_experiment_from_run: 'experiment_{}/run_{}'
+tps_load_from_model: 'Original'
+tps_experiment_from_dir: 'VITON/{}/{}/{}'
+
+# VTO
+vto_experiment_from_number: 1 #vto_experiment_from_dir
+vto_run_from_number: 6 # vto_experiment_from_dir
+vto_experiment_from_run: 'experiment_{}/run_{}'
+vto_load_from_model: 'Original'
+vto_experiment_from_dir: 'VITON/{}/{}/{}'
+
+# EMASC
+emasc_experiment_from_number: 1 #emasc_experiment_from_dir
+emasc_run_from_number: 6 # emasc_experiment_from_dir
+emasc_experiment_from_run: 'experiment_{}/run_{}'
+emasc_load_from_model: 'Original'
+emasc_experiment_from_dir: 'VITON/{}/{}/{}'
+
+# Inversion
+inversion_experiment_from_number: 1 #inversion_experiment_from_dir
+inversion_run_from_number: 6 # inversion_experiment_from_dir
+inversion_experiment_from_run: 'experiment_{}/run_{}'
+inversion_load_from_model: 'Original'
+inversion_experiment_from_dir: 'VITON/{}/{}/{}'
+
+
+
+# ========================= Preprocessing Hyperparameters
+raw_dir: 'data/VITON/{}/{}/{}/{}'
+preprocessing_method: 'openpose' # [openpose, densepose, cihp_pgn]
+
+
+# ========================= Inference Hyperparameters
+saving: 'cloth'
+person: 'alex'
+clothing: 'gray_jacket'
+in_shop_clothing: 'molefe_black_shirt_52.jpg'
+
+# ========================= VITON information
+
+VITON_Model: "PB_Warp"
+VITON_Type: 'Parser_Based'
+VITON_Name: 'Ladi_VTON'
+NeRF_Name: 'Vanilla_NeRF'
+name: 'Inference Pipeline'
+project_name: 'inference_pipeline'
+
+# ========================= Machine Hyperparameters
+cuda: true
+workers: 4
+gpu_ids: '0'
+viton_workers: 1
+wandb_name: 'name'
+load_last_step: False
+device: 1
+res: 'high_res'
+low_res_dataset_name: 'ACGPN'
+datamode: 'train'
+dataset_name: 'Rail'
+shuffle: false
+viton_shuffle: true
+viton_batch_size: 4
+
+# ========================= VITON dataset
+fine_width: 192
+fine_height: 256
+test_datasetting: 'unpaired'
+test_dataroot: '../data/rail'
+test_data_list: 'test_pairs.txt'
+
+# ========================= Directory
+this_viton_save_to_dir: 'VITON/{}/{}'  # Every experiment has this
+this_viton_load_from_dir: 'VITON/{}/{}'  # Every experiment has this
+root_dir: '/home-mscluster/mmolefe/Playground/Synthesising Virtual Fashion Try-On with Neural Radiance Fields/Fashion-SuperNeRF'
+transforms_dir: 'data/VITON/{}/transforms'
+checkpoint_root_dir: "/gluster/mmolefe"
+dataset_root_dir: "/datasets/mmolefe"
+rail_dir: 'data/VITON/{}/processed/{}/{}'
+original_dir: 'data/VITON/{}/processed/{}/{}'
+nerf_training_images: './results/{}/NeRF/training'
+nerf_validation_images: './results/{}/NeRF/validation'
+nerf_testing_images: './results/{}/NeRF/testing'
+tryon_basedir: './logs/{}/{}'
+experiment_run_yaml: './experiments/{}/{}'
+writer: './tensorboard'
+tryon_writer: './tensorboard/{}/{}/tryon'
+nerf_save_checkpoint: './checkpoints/{}/NeRF_%s.pth'
+nerf_load_checkpoint: './checkpoints/{}/NeRF_%s.pth'
+tryon_save_step_checkpoint: './checkpoints/{}/{}/steps/tryon_step_%06d.pth'
+tryon_load_step_checkpoint: './checkpoints/{}/{}/steps/tryon_step_%06d.pth'
+tryon_save_final_checkpoint: './checkpoints/{}/{}/tryon_final.pth'
+tryon_load_final_checkpoint: './checkpoints/{}/{}/tryon_final.pth'
+tryon_discriminator_save_step_checkpoint: './checkpoints/{}/{}/steps/tryon_discriminator_step_%06d.pth'
+tryon_discriminator_load_step_checkpoint: './checkpoints/{}/{}/steps/tryon_discriminator_step_%06d.pth'
+tryon_discriminator_save_final_checkpoint: './checkpoints/{}/{}/tryon_discriminator_final.pth'
+tryon_discriminator_load_final_checkpoint: './checkpoints/{}/{}/tryon_discriminator_final.pth'
+
+# ===================== Logging Hyperparameters
+no_test_visualize: false
+num_test_visualize: 4
+display_count: 100000 # [Parser_Free, Parser_Based] Frequency Of Saving Training Results As Images & Graphs
+save_count: 100000 # [Parser_Free, Parser_Based]
+tensorboard_count: 100000 # [Parser_Free, Parser_Based] Frequency Of Saving Training Results As Images & Graphs
+save_period: 100000 # Frequency Of Saving Checkpoints At The End Of Epochs
+
+# ===================== Experiment Hyperparameters
+fp16: false
+val_count: 100000 # [Parser_Free, Parser_Based] Frequency Of Saving, Printing Validation Results On Screen'
+load_step: 100000 # [Parser_Free, Parser_Based]
+decay_step: 100000 # [Parser_Based]
+keep_step: 300000 # [Parser_Based]
+niter: 100000 # opt.niter + opt.niter_decay = total number of epochs Number of Epochs At Starting Learning Rate
+niter_decay: 100000 # Number Of Epochs To Linearly Decay Learning Rate To Zero
+print_step: 100000 # Frequency Of Print Training Results On Screen'
+validate: True
+stage: GMM
+# ===================== Neural Radiance Fields 
+
+nerf_model: "NeRF"
+nerf_config: "../data/rail/configs/julian_gray_long_sleeve.txt"
+nerf_basedir: './logs/{}'
+nerf_datadir: './data/rail/temp/'
+nerf_writer: './tensorboard/{}/NeRF_%s'
+nerf_netdepth: 8
+nerf_netwidth: 256
+nerf_netdepth_fine: 8
+nerf_netwidth_fine: 256
+nerf_N_rand: 1024
+nerf_lrate: 0.0005
+nerf_lrate_decay: 500
+nerf_chunk: 32768
+nerf_netchunk: 65536
+nerf_no_batching: true
+nerf_no_reload: true
+nerf_ft_path: null
+
+# Rendering options
+nerf_N_samples: 64
+nerf_N_importance: 128
+nerf_perturb: 1.0
+nerf_use_viewdirs: true
+nerf_i_embed: 0
+nerf_multires: 10
+nerf_multires_views: 4
+nerf_raw_noise_std: 1.0
+
+nerf_render_only: false
+nerf_render_test: true
+nerf_render_factor: 0
+
+# Training options
+nerf_precrop_iters: 0
+nerf_precrop_frac: 0.5
+
+# Dataset options
+nerf_dataset_type: "blender"
+nerf_testskip: 8
+
+# Deepvoxels flags
+nerf_shape: "greek"
+
+# Blender flags
+nerf_white_bkgd: true
+nerf_half_res: true
+
+# LLFF flags
+nerf_factor: 8
+nerf_no_ndc: true
+nerf_lindisp: true
+nerf_spherify: true
+nerf_llffhold: 8
+
+# Logging/saving options
+nerf_i_print: 100
+nerf_i_img: 500
+nerf_i_weights: 10000
+nerf_i_testset: 50000
+nerf_i_video: 50000

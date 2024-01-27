@@ -1,0 +1,5 @@
+Load pretrained parser-free warp from checkpoints/dmvton_pf_warp.pt
+Load pretrained parser-free gen from checkpoints/dmvton_pf_gen.pt
+Speed: 50.9ms per image torch.Size([1, 3, 256, 192])
+Metric, fid: 28.305057577771407, lpips: 0.2158325096198286, fps: 19.652432215216415, mem: 37570848, ops: 34911810176.0, params: 9350124.0
+Results are saved at runs/test/exp/results

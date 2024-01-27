@@ -1,0 +1,13 @@
+project: runs/test
+name: exp
+device: '0'
+dataroot: dataset/VITON-Clean/VITON_test
+valroot: dataset/VITON-Clean/VITON_test
+batch_size: 1
+workers: 1
+no_flip: false
+save_img: true
+pf_warp_checkpoint: checkpoints/dmvton_pf_warp.pt
+pf_gen_checkpoint: checkpoints/dmvton_pf_gen.pt
+align_corners: true
+save_dir: runs/test/exp-1

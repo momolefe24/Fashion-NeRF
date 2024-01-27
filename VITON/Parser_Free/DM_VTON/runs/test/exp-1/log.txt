@@ -1,0 +1,2 @@
+Load pretrained parser-free warp from checkpoints/dmvton_pf_warp.pt
+Load pretrained parser-free gen from checkpoints/dmvton_pf_gen.pt

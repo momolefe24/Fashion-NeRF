@@ -1,0 +1,181 @@
+debug: 0
+sweeps: 0
+run_wandb: 0
+# ========================= Training intention
+intent: 'Pretrain parser based warping for HR_VITON and save the weights so that we can fine-tune on rail data ' # What is the intent of the research
+what_does_it_have: 'Parser Based warping trained on Original data'
+rail_data: 'Contains 8 Unique Individual-Clothing Pairs'
+
+
+# ========================= Run Hyperparameters
+run_number: 1
+experiment_number: 1
+experiment_run: "experiment_{}/run_{}"
+run_from_number: 1
+experiment_from_number: 1
+experiment_from_run: "experiment_{}/run_{}"
+experiment_from_number: 1
+experiment_from_run: experiment_{}/run_{}
+experiment_number: 1
+experiment_run: experiment_{}/run_{}
+continue_train: False
+
+
+# ========================= VITON dataset
+test_datasetting: unpaired
+low_res_viton_dataset_name: "VITON-Clean"
+dataset_name: "Original"
+test_dataroot: /data/
+test_data_list: test_pairs.txt
+fine_width: 192 # [tocg: 192, gen: 768]
+fine_height: 256 # [tocg: 256, gen: 1024]
+
+# ========================= VITON information
+VITON_Type: "Parser_Based"
+VITON_Name: "HR_VITON"
+
+# ========================= Directory
+rail_dir: "data/VITON/{}/processed/{}/{}"
+original_dir: "data/VITON/{}/processed/{}/{}"
+root_dir: "/home-mscluster/mmolefe/Playground/Synthesising Virtual Fashion Try-On with Neural Radiance Fields/Fashion-SuperNeRF"
+checkpoint_root_dir: "/gluster/mmolefe"
+dataset_root_dir: "/datasets/mmolefe"
+tensorboard_dir: "./tensorboard/{}/{}"
+results_dir: "./results/{}/{}"
+VITON_selection_dir: "VITON/{}/{}"
+
+
+# ========================= TOCG
+tocg_save_step_checkpoint_dir: "/checkpoints/{}/{}/steps"
+tocg_save_step_checkpoint: "mtviton_%06d.pth"
+tocg_load_step_checkpoint_dir: "/checkpoints/{}/{}/steps"
+tocg_load_step_checkpoint: "mtviton_%06d.pth"
+
+tocg_save_final_checkpoint_dir: "/checkpoints/{}/{}"
+tocg_save_final_checkpoint: "mtviton.pth"
+tocg_load_final_checkpoint_dir: "/checkpoints/{}/{}"
+tocg_load_final_checkpoint: "tocg.pt"
+tocg_load_from_model: Original
+
+tocg_discriminator_save_step_checkpoint_dir: "/checkpoints/{}/{}/steps"
+tocg_discriminator_save_step_checkpoint: "discriminator_mtviton_%06d.pth"
+tocg_discriminator_load_step_checkpoint_dir: "/checkpoints/{}/{}/steps"
+tocg_discriminator_load_step_checkpoint: "discriminator_mtviton_%06d.pth"
+tocg_discriminator_save_final_checkpoint_dir: "/checkpoints/{}/{}"
+tocg_discriminator_save_final_checkpoint: "discriminator_mtviton.pth"
+tocg_discriminator_load_final_checkpoint_dir: "/checkpoints/{}/{}"
+tocg_discriminator_load_final_checkpoint: "discriminator_mtviton.pth"
+tocg_discriminator_load_from_model: Rail
+
+# ========================== GEN
+gen_save_step_checkpoint_dir: "/checkpoints/{}/{}/steps"
+gen_save_step_checkpoint: "gen_%06d.pth"
+gen_load_step_checkpoint_dir: "/checkpoints/{}/{}/steps"
+gen_load_step_checkpoint: "gen_%06d.pth"
+
+gen_save_final_checkpoint_dir: "/checkpoints/{}/{}"
+gen_save_final_checkpoint: "gen.pth"
+gen_load_final_checkpoint_dir: "/checkpoints/{}/{}"
+gen_load_final_checkpoint: "gen.pth"
+
+gen_discriminator_save_step_checkpoint_dir: "/checkpoints/{}/{}/steps"
+gen_discriminator_save_step_checkpoint: "gen_discriminator_%06d.pth"
+gen_discriminator_load_step_checkpoint_dir: "/checkpoints/{}/{}/steps"
+gen_discriminator_load_step_checkpoint: "gen_discriminator_%06d.pth"
+gen_discriminator_save_final_checkpoint_dir: "/checkpoints/{}/{}"
+gen_discriminator_save_final_checkpoint: "gen_discriminator.pth"
+gen_discriminator_load_final_checkpoint_dir: "/checkpoints/{}/{}"
+gen_discriminator_load_final_checkpoint: "gen_discriminator.pth"
+
+
+sam_checkpoint: "/gluster/mmolefe/checkpoints/sam_vit_h_4b8939.pth" 
+sam_model_type: "vit_h"
+
+# ========================= Machine Hyperparameters
+res: "low_res"
+device: 1
+datamode: "train"
+VITON_Model: "TOCG"
+load_last_step: False
+cuda: true
+gpu_ids: ''
+wandb_name: wandb_name
+run_wandb: True
+viton_workers: 1
+viton_batch_size: 4
+
+# =====================  Sweep Hyperparameters
+lr: 5.0e-05
+momentum: 0.5
+optimizer: Adam # [Adam, AdamW, SGD]
+warp_feature: T1 # ['encoder', 'T1']
+out_layer: relu # [conv, relu]
+Ddownx2: True
+Ddropout: True
+question: 'Original hyperparameters'
+impact: 'High-resolution VITON for parser-based networks can generate higher fidelity images'
+G_D_seperate: False
+no_GAN_loss: False
+lasttvonly: True
+interflowloss: True
+clothmask_composition: warp_grad # ['no_composition', 'detach', 'warp_grad']
+segment_anything: False
+flow_self_attention: False
+flow_spatial_attention: False
+flow_channel_attention: true
+feature_pyramid_self_attention: False
+feature_pyramid_spatial_attention: False
+feature_pyramid_channel_attention: true
+edgeawaretv: no_edge # ['no_edge', 'last_only', 'weighted']
+add_lasttv: False
+G_lr: 0.0002
+D_lr: 0.0002
+CElamda: 10 # initial learning rate for adam
+GANlambda: 1
+tvlambda: 2
+loss_l1_cloth_lambda: 10
+upsample: bilinear # [billinear, ]
+spectral: False
+occlusion: True
+num_D: 2
+n_layers_D: 3
+norm_G: spectralaliasinstance # [spectralaliasinstance]
+norm_D: spectralinstance # [spectralinstance]
+init_type: xavier # [xavier]
+num_upsampling_layers: most # [most]
+GMM_const: None
+no_ganFeat_loss: False
+no_vgg_loss: False
+ndf: 64
+norm_const: 1
+clip_warping: false
+init_variance: 0.02
+lambda_l1: 1.0
+lambda_vgg: 10.0
+lambda_feat: 10.0
+netD_subarch: n_layer # [n_layer]
+GT: False
+ngf: 64
+
+# ===================== Experiment Hyperparameters
+niter: 1000 # opt.niter + opt.niter_decay = total number of epochs
+niter_decay: 1000
+load_step: 0
+decay_step: 100000
+keep_step: 100000
+fp16: false
+
+
+# ===================== Input/Output Hyperparameters
+semantic_nc: 13
+output_nc: 13
+gen_semantic_nc: 7
+
+# ===================== Logging Hyperparameters
+lpips_count: 1000
+val_count: 100
+no_test_visualize: True
+num_test_visualize: 3
+display_count: 1 # Frequency Of Saving Training Results As Images & Graphs
+print_step: 100 # Frequency Of Print Training Results On Screen'
+save_period: 100 # Frequency Of Saving Checkpoints At The End Of Epochs

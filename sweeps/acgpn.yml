@@ -1,0 +1,57 @@
+# =====================  Sweep Hyperparameters
+program: train.py
+method: random
+metric:
+  goal: minimize
+  name: warping_loss
+parameters:
+  niter: 
+    values: [50, 100, 150]
+  niter_decay: 
+    values: [50, 100, 150]
+  netG:
+    value: global
+  ngf:
+    value: 64
+  norm:
+    value: 'instance' 
+  n_downsample_global:
+    value: 4
+  n_blocks_global:
+    value: 4
+  n_blocks_local:
+    value: 3
+  n_local_enhancers:
+    value: 1
+  niter_fix_global:
+    value: 0
+  beta1:
+    values: [0.5,0.6,0.9,0.99]
+  lr:
+    distribution: 'uniform'
+    min: 0.00001
+    max: 0.1
+  momentum:
+    values: [0.5,0.6,0.9]
+  num_D:
+    value: 2
+  n_layers_D:
+    value: 3
+  ndf:
+    value: 64
+  lambda_feat:
+    values: [7.0, 8.0,9.0,10.0]
+  no_ganFeat_loss:
+    value: false
+  no_vgg_loss:
+    value: false
+  no_lsgan:
+    value: false
+  pool_size:
+    value: 0
+  use_dropout:
+    value: false
+  data_type:
+    value: 32
+  no_flip:
+    value: true

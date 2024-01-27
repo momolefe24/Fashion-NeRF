@@ -1,0 +1,887 @@
+import torch
+import torch.nn as nn
+from torch.nn import functional as F
+from torchvision.utils import make_grid as make_image_grid
+import argparse
+import yaml
+import os
+import time
+from VITON.Parser_Based.HR_VITON.networks import ConditionGenerator, VGGLoss, load_checkpoint, save_checkpoint, make_grid
+from VITON.Parser_Based.HR_VITON.network_generator import SPADEGenerator, MultiscaleDiscriminator, GANLoss
+
+from VITON.Parser_Based.HR_VITON.sync_batchnorm import DataParallelWithCallback
+from tensorboardX import SummaryWriter
+from VITON.Parser_Based.HR_VITON.utils import create_network, visualize_segmap
+from tqdm import tqdm
+
+import numpy as np
+from torch.utils.data import Subset
+from torchvision.transforms import transforms
+import VITON.Parser_Based.HR_VITON.eval_models.evals_model as models
+import torchgeometry as tgm
+from preprocessing.segment_anything.segment_anything import sam_model_registry, SamAutomaticMaskGenerator, SamPredictor  
+from dataset import FashionDataLoader, FashionNeRFDataset
+def remove_overlap(seg_out, warped_cm):
+    
+    assert len(warped_cm.shape) == 4
+    
+    warped_cm = warped_cm - (torch.cat([seg_out[:, 1:3, :, :], seg_out[:, 5:, :, :]], dim=1)).sum(dim=1, keepdim=True) * warped_cm
+    return warped_cm
+
+
+fix = lambda path: os.path.normpath(path)
+
+   
+def get_wandb_image(image, wandb):
+    if image.max() <= 1.0:
+        image = image*255 
+    image_numpy = image.permute(1, 2, 0).cpu().detach().numpy().astype(np.uint8)
+    return wandb.Image(image_numpy)     
+
+
+def get_sam(opt):
+    sam = sam_model_registry[opt.sam_model_type](checkpoint=opt.sam_checkpoint) 
+    if opt.cuda:
+        sam.to(device="cuda") 
+    return sam
+
+def train_try_on_generator(opt, train_loader, test_loader,board,gen, generator, discriminator, model, wandb=None):
+    """
+        Train Generator
+    """
+    # , test_loader, test_loader, board, gen, generator, discriminator, model
+
+    generator.train()
+    generator.cuda()
+    gen.cuda()
+    gen.eval()
+    discriminator.train()
+    discriminator.cuda()
+    model.eval()
+    
+
+    # criterion
+    if opt.fp16:
+        criterionGAN = GANLoss('hinge', tensor=torch.cuda.HalfTensor)
+    else:
+        criterionGAN = GANLoss('hinge', tensor=torch.cuda.FloatTensor)
+    # criterionL1 = nn.L1Loss()
+    criterionFeat = nn.L1Loss()
+    criterionVGG = VGGLoss(opt)
+
+    # optimizer
+    optimizer_gen = torch.optim.Adam(generator.parameters(), lr=opt.G_lr, betas=(0, 0.9))
+    scheduler_gen = torch.optim.lr_scheduler.LambdaLR(optimizer_gen, lr_lambda=lambda step: 1.0 -
+            max(0, step * 1000 + opt.load_step - opt.keep_step) / float(opt.decay_step + 1))
+    optimizer_dis = torch.optim.Adam(discriminator.parameters(), lr=opt.D_lr, betas=(0, 0.9))
+    scheduler_dis = torch.optim.lr_scheduler.LambdaLR(optimizer_dis, lr_lambda=lambda step: 1.0 -
+            max(0, step * 1000 + opt.load_step - opt.keep_step) / float(opt.decay_step + 1))
+
+    if opt.fp16:
+        if not opt.GT:
+            from apex import amp
+            [gen, generator, discriminator], [optimizer_gen, optimizer_dis] = amp.initialize(
+                [gen, generator, discriminator], [optimizer_gen, optimizer_dis], opt_level='O1', num_losses=2)
+        else:
+            from apex import amp
+            [generator, discriminator], [optimizer_gen, optimizer_dis] = amp.initialize(
+                [generator, discriminator], [optimizer_gen, optimizer_dis], opt_level='O1', num_losses=2)
+
+    
+    if not opt.GT:
+        gen = DataParallelWithCallback(gen, device_ids=[opt.device])
+    generator = DataParallelWithCallback(generator, device_ids=[opt.device])
+    discriminator = DataParallelWithCallback(discriminator, device_ids=[opt.device])
+    criterionGAN = DataParallelWithCallback(criterionGAN, device_ids=[opt.device])
+    criterionFeat = DataParallelWithCallback(criterionFeat, device_ids=[opt.device])
+    criterionVGG = DataParallelWithCallback(criterionVGG, device_ids=[opt.device])
+        
+    upsample = torch.nn.Upsample(scale_factor=4, mode='bilinear')
+    gauss = tgm.image.GaussianBlur((15, 15), (3, 3))
+    gauss = gauss.cuda()
+
+    for step in tqdm(range(opt.niter + opt.niter_decay)):
+        iter_start_time = time.time()
+        inputs = train_loader.next_batch()
+
+        # input
+        agnostic = inputs['agnostic'].cuda()
+        parse_GT = inputs['parse'].cuda()
+        pose = inputs['densepose'].cuda()
+        parse_cloth = inputs['parse_cloth'].cuda()
+        parse_agnostic = inputs['parse_agnostic'].cuda()
+        pcm = inputs['pcm'].cuda()
+        cm = inputs['cloth_mask']['paired'].cuda()
+        c_paired = inputs['cloth']['paired'].cuda()
+        
+        # target
+        im = inputs['image'].cuda()
+
+        with torch.no_grad():
+            if not opt.GT:
+                # Warping Cloth
+                # down
+                pre_clothes_mask_down = F.interpolate(cm, size=(256, 192), mode='nearest')
+                input_parse_agnostic_down = F.interpolate(parse_agnostic, size=(256, 192), mode='nearest')
+                clothes_down = F.interpolate(c_paired, size=(256, 192), mode='bilinear')
+                densepose_down = F.interpolate(pose, size=(256, 192), mode='bilinear')
+                
+                # multi-task inputs
+                input1 = torch.cat([clothes_down, pre_clothes_mask_down], 1)
+                input2 = torch.cat([input_parse_agnostic_down, densepose_down], 1)
+
+                # forward
+                
+                if opt.segment_anything and step >= (opt.niter + opt.niter_decay) // 3:
+                    flow_list, fake_segmap, _, warped_clothmask_paired = gen(opt, input1, input2, im_c=parse_cloth)
+                else:
+                    flow_list, fake_segmap, _, warped_clothmask_paired = gen(opt, input1, input2)
+                
+                # warped cloth mask one hot 
+                warped_cm_onehot = torch.FloatTensor((warped_clothmask_paired.detach().cpu().numpy() > 0.5).astype(np.float32)).cuda()
+                
+                if opt.clothmask_composition != 'no_composition':
+                    if opt.clothmask_composition == 'detach':
+                        cloth_mask = torch.ones_like(fake_segmap)
+                        cloth_mask[:,3:4, :, :] = warped_cm_onehot
+                        fake_segmap = fake_segmap * cloth_mask
+                        
+                    if opt.clothmask_composition == 'warp_grad':
+                        cloth_mask = torch.ones_like(fake_segmap)
+                        cloth_mask[:,3:4, :, :] = warped_clothmask_paired
+                        fake_segmap = fake_segmap * cloth_mask
+                        
+                # warped cloth
+                N, _, iH, iW = c_paired.shape
+                grid = make_grid(N, iH, iW,opt)
+                flow = F.interpolate(flow_list[-1].permute(0, 3, 1, 2), size=(iH, iW), mode='bilinear').permute(0, 2, 3, 1)
+                flow_norm = torch.cat([flow[:, :, :, 0:1] / ((96 - 1.0) / 2.0), flow[:, :, :, 1:2] / ((128 - 1.0) / 2.0)], 3)
+                warped_grid = grid + flow_norm
+                warped_cloth_paired = F.grid_sample(c_paired, warped_grid, padding_mode='border').detach()
+                warped_clothmask = F.grid_sample(cm, warped_grid, padding_mode='border')
+
+                # make generator input parse map
+                fake_parse_gauss = gauss(F.interpolate(fake_segmap, size=(iH, iW), mode='bilinear'))
+                fake_parse = fake_parse_gauss.argmax(dim=1)[:, None]
+
+                # occlusion
+                if opt.occlusion:
+                    warped_clothmask = remove_overlap(F.softmax(fake_parse_gauss, dim=1), warped_clothmask)
+                    warped_cloth_paired = warped_cloth_paired * warped_clothmask + torch.ones_like(warped_cloth_paired) * (1-warped_clothmask)
+                    warped_cloth_paired = warped_cloth_paired.detach()
+            else:
+                # parse pre-process
+                fake_parse = parse_GT.argmax(dim=1)[:, None]
+                warped_cloth_paired = parse_cloth
+                
+            old_parse = torch.FloatTensor(fake_parse.size(0), 13, opt.fine_height, opt.fine_width).zero_().cuda()
+            old_parse.scatter_(1, fake_parse, 1.0)
+
+            labels = {
+                0:  ['background',  [0]],
+                1:  ['paste',       [2, 4, 7, 8, 9, 10, 11]],
+                2:  ['upper',       [3]],
+                3:  ['hair',        [1]],
+                4:  ['left_arm',    [5]],
+                5:  ['right_arm',   [6]],
+                6:  ['noise',       [12]]
+            }
+            parse = torch.FloatTensor(fake_parse.size(0), 7, opt.fine_height, opt.fine_width).zero_().cuda()
+            for i in range(len(labels)):
+                for label in labels[i][1]:
+                    parse[:, i] += old_parse[:, label]
+                    
+            parse = parse.detach()
+        # --------------------------------------------------------------------------------------------------------------
+        #                                              Train the generator
+        # --------------------------------------------------------------------------------------------------------------
+        output_paired = generator(torch.cat((agnostic, pose, warped_cloth_paired), dim=1), parse)
+
+        fake_concat = torch.cat((parse, output_paired), dim=1)
+        real_concat = torch.cat((parse, im), dim=1)
+        pred = discriminator(torch.cat((fake_concat, real_concat), dim=0))
+
+        # the prediction contains the intermediate outputs of multiscale GAN,
+        # so it's usually a list
+        if type(pred) == list:
+            pred_fake = []
+            pred_real = []
+            for p in pred:
+                pred_fake.append([tensor[:tensor.size(0) // 2] for tensor in p])
+                pred_real.append([tensor[tensor.size(0) // 2:] for tensor in p])
+        else:
+            pred_fake = pred[:pred.size(0) // 2]
+            pred_real = pred[pred.size(0) // 2:]
+
+        G_losses = {}
+        G_losses['GAN'] = criterionGAN(pred_fake, True, for_discriminator=False)
+
+        if not opt.no_ganFeat_loss:
+            num_D = len(pred_fake)
+            GAN_Feat_loss = torch.cuda.FloatTensor(len(pred_fake)).zero_()
+            for i in range(num_D):  # for each discriminator
+                # last output is the final prediction, so we exclude it
+                num_intermediate_outputs = len(pred_fake[i]) - 1
+                for j in range(num_intermediate_outputs):  # for each layer output
+                    unweighted_loss = criterionFeat(pred_fake[i][j], pred_real[i][j].detach())
+                    GAN_Feat_loss += unweighted_loss * opt.lambda_feat / num_D
+            G_losses['GAN_Feat'] = GAN_Feat_loss
+
+        if not opt.no_vgg_loss:
+            G_losses['VGG'] = criterionVGG(output_paired, im) * opt.lambda_vgg
+
+        loss_gen = sum(G_losses.values()).mean()
+
+        optimizer_gen.zero_grad()
+        if opt.fp16:
+            with amp.scale_loss(loss_gen, optimizer_gen, loss_id=0) as loss_gen_scaled:
+                loss_gen_scaled.backward()
+        else:
+            loss_gen.backward()
+        optimizer_gen.step()
+
+        # --------------------------------------------------------------------------------------------------------------
+        #                                            Train the discriminator
+        # --------------------------------------------------------------------------------------------------------------
+        with torch.no_grad():
+            output = generator(torch.cat((agnostic, pose, warped_cloth_paired), dim=1), parse)
+            output = output.detach()
+            output.requires_grad_()
+
+        fake_concat = torch.cat((parse, output), dim=1)
+        real_concat = torch.cat((parse, im), dim=1)
+        pred = discriminator(torch.cat((fake_concat, real_concat), dim=0))
+
+        # the prediction contains the intermediate outputs of multiscale GAN,
+        # so it's usually a list
+        if type(pred) == list:
+            pred_fake = []
+            pred_real = []
+            for p in pred:
+                pred_fake.append([tensor[:tensor.size(0) // 2] for tensor in p])
+                pred_real.append([tensor[tensor.size(0) // 2:] for tensor in p])
+        else:
+            pred_fake = pred[:pred.size(0) // 2]
+            pred_real = pred[pred.size(0) // 2:]
+
+        D_losses = {}
+        D_losses['D_Fake'] = criterionGAN(pred_fake, False, for_discriminator=True)
+        D_losses['D_Real'] = criterionGAN(pred_real, True, for_discriminator=True)
+
+        loss_dis = sum(D_losses.values()).mean()
+
+        optimizer_dis.zero_grad()
+        if opt.fp16:
+            with amp.scale_loss(loss_dis, optimizer_dis, loss_id=1) as loss_dis_scaled:
+                loss_dis_scaled.backward()
+        else:
+            loss_dis.backward()
+        optimizer_dis.step()
+        # --------------------------------------------------------------------------------------------------------------
+        #                                            recording
+        # --------------------------------------------------------------------------------------------------------------
+        if (step + 1) % opt.display_count == 0:
+            i = 0
+            grid = make_image_grid([(c_paired[0].cpu() / 2 + 0.5), (cm[0].cpu()).expand(3, -1, -1), ((pose.cpu()[0]+1)/2), visualize_segmap(parse_agnostic.cpu(), batch=i),
+                                    (warped_cloth_paired[i].cpu() / 2 + 0.5), (agnostic[i].cpu() / 2 + 0.5), (pose[i].cpu() / 2 + 0.5), visualize_segmap(fake_parse_gauss.cpu(), batch=i),
+                                    (output[i].cpu() / 2 + 0.5), (im[i].cpu() / 2 + 0.5)],
+                                    nrow=4)
+            out = output[i].cpu() / 2 + 0.5
+            board.add_images('train_images', grid.unsqueeze(0), step + 1)
+            board.add_scalar('Loss/gen', loss_gen.item(), step + 1)
+            board.add_scalar('Loss/gen/adv', G_losses['GAN'].mean().item(), step + 1)
+            #board.add_scalar('Loss/gen/l1', G_losses['L1'].mean().item(), step + 1)
+            board.add_scalar('Loss/gen/feat', G_losses['GAN_Feat'].mean().item(), step + 1)
+            board.add_scalar('Loss/gen/vgg', G_losses['VGG'].mean().item(), step + 1)
+            board.add_scalar('Loss/dis', loss_dis.item(), step + 1)
+            board.add_scalar('Loss/dis/adv_fake', D_losses['D_Fake'].mean().item(), step + 1)
+            board.add_scalar('Loss/dis/adv_real', D_losses['D_Real'].mean().item(), step + 1)
+            if wandb is not None:
+                my_table = wandb.Table(columns=['Grid', 'Segmentation Map For Label','Segmentation Map For Fake Data','Warped Cloth','Misalign'])
+                grid_wandb = get_wandb_image(grid, wandb)
+                segmap_for_label = get_wandb_image(visualize_segmap(label.cpu()), wandb)
+                segmap_for_fake_data = get_wandb_image(visualize_segmap(fake_segmap.cpu()), wandb)
+                warped_cloth = get_wandb_image((warped_cloth_paired[0].cpu().detach() / 2 + 0.5), wandb)
+                misalign_cloth = get_wandb_image(out, wandb)
+                my_table.add_data(grid_wandb, segmap_for_label, segmap_for_fake_data,warped_cloth, misalign_cloth)
+                wandb.log({'Table': my_table, 'Gen': loss_gen.item()
+                ,'Loss/G/Adv':G_losses['GAN'].mean().item()
+                ,'Loss/G/feat':G_losses['GAN_Feat'].mean().item()
+                ,'Loss/G/vgg':G_losses['VGG'].mean().item()})
+                
+            # unpaired visualize
+            generator.eval()
+            
+            inputs = test_loader.next_batch()
+            # input
+            agnostic = inputs['agnostic'].cuda()
+            parse_GT = inputs['parse'].cuda()
+            pose = inputs['densepose'].cuda()
+            parse_cloth = inputs['parse_cloth'].cuda()
+            parse_agnostic = inputs['parse_agnostic'].cuda()
+            pcm = inputs['pcm'].cuda()
+            cm = inputs['cloth_mask']['unpaired'].cuda()
+            c_paired = inputs['cloth']['unpaired'].cuda()
+            
+            # target
+            im = inputs['image'].cuda()
+                        
+            with torch.no_grad():
+                if not opt.GT:
+                    # Warping Cloth
+                    # down
+                    pre_clothes_mask_down = F.interpolate(cm, size=(256, 192), mode='nearest')
+                    input_parse_agnostic_down = F.interpolate(parse_agnostic, size=(256, 192), mode='nearest')
+                    clothes_down = F.interpolate(c_paired, size=(256, 192), mode='bilinear')
+                    densepose_down = F.interpolate(pose, size=(256, 192), mode='bilinear')
+                    
+                    # multi-task inputs
+                    input1 = torch.cat([clothes_down, pre_clothes_mask_down], 1)
+                    input2 = torch.cat([input_parse_agnostic_down, densepose_down], 1)
+
+                    # forward
+                    # flow_list, fake_segmap, _, warped_clothmask_paired = gen(opt, input1, input2)
+                    
+                    if opt.segment_anything and step >= (opt.niter + opt.niter_decay) // 3:
+                        flow_list, fake_segmap, _, warped_clothmask_paired = gen(opt, input1, input2, im_c=parse_cloth)
+                    else:
+                        flow_list, fake_segmap, _, warped_clothmask_paired = gen(opt, input1, input2)
+                    
+                    # warped cloth mask one hot 
+                    warped_cm_onehot = torch.FloatTensor((warped_clothmask_paired.detach().cpu().numpy() > 0.5).astype(np.float32)).cuda()
+                    
+                    if opt.clothmask_composition != 'no_composition':
+                        if opt.clothmask_composition == 'detach':
+                            cloth_mask = torch.ones_like(fake_segmap)
+                            cloth_mask[:,3:4, :, :] = warped_cm_onehot
+                            fake_segmap = fake_segmap * cloth_mask
+                            
+                        if opt.clothmask_composition == 'warp_grad':
+                            cloth_mask = torch.ones_like(fake_segmap)
+                            cloth_mask[:,3:4, :, :] = warped_clothmask_paired
+                            fake_segmap = fake_segmap * cloth_mask
+                            
+                    # warped cloth
+                    N, _, iH, iW = c_paired.shape
+                    grid = make_grid(N, iH, iW,opt)
+                    flow = F.interpolate(flow_list[-1].permute(0, 3, 1, 2), size=(iH, iW), mode='bilinear').permute(0, 2, 3, 1)
+                    flow_norm = torch.cat([flow[:, :, :, 0:1] / ((96 - 1.0) / 2.0), flow[:, :, :, 1:2] / ((128 - 1.0) / 2.0)], 3)
+                    warped_grid = grid + flow_norm
+                    warped_cloth_paired = F.grid_sample(c_paired, warped_grid, padding_mode='border').detach()
+                    warped_clothmask = F.grid_sample(cm, warped_grid, padding_mode='border')
+
+                    # make generator input parse map
+                    fake_parse_gauss = gauss(F.interpolate(fake_segmap, size=(iH, iW), mode='bilinear'))
+                    fake_parse = fake_parse_gauss.argmax(dim=1)[:, None]
+
+                    if opt.occlusion:
+                        warped_clothmask = remove_overlap(F.softmax(fake_parse_gauss, dim=1), warped_clothmask)
+                        warped_cloth_paired = warped_cloth_paired * warped_clothmask + torch.ones_like(warped_cloth_paired) * (1-warped_clothmask)
+                        warped_cloth_paired = warped_cloth_paired.detach()
+
+                else:
+                    # parse pre-process
+                    fake_parse = parse_GT.argmax(dim=1)[:, None]
+                    warped_cloth_paired = parse_cloth
+                    
+                old_parse = torch.FloatTensor(fake_parse.size(0), 13, opt.fine_height, opt.fine_width).zero_().cuda()
+                old_parse.scatter_(1, fake_parse, 1.0)
+
+                labels = {
+                    0:  ['background',  [0]],
+                    1:  ['paste',       [2, 4, 7, 8, 9, 10, 11]],
+                    2:  ['upper',       [3]],
+                    3:  ['hair',        [1]],
+                    4:  ['left_arm',    [5]],
+                    5:  ['right_arm',   [6]],
+                    6:  ['noise',       [12]]
+                }
+                parse = torch.FloatTensor(fake_parse.size(0), 7, opt.fine_height, opt.fine_width).zero_().cuda()
+                for i in range(len(labels)):
+                    for label in labels[i][1]:
+                        parse[:, i] += old_parse[:, label]
+                        
+                parse = parse.detach()
+            
+                output = generator(torch.cat((agnostic, pose, warped_cloth_paired), dim=1), parse)
+                
+                for i in range(opt.num_test_visualize):
+                    grid = make_image_grid([(c_paired[i].cpu() / 2 + 0.5), (cm[i].cpu()).expand(3, -1, -1), ((pose.cpu()[i]+1)/2), visualize_segmap(parse_agnostic.cpu(), batch=i),
+                        (warped_cloth_paired[i].cpu() / 2 + 0.5), (agnostic[i].cpu() / 2 + 0.5), (pose[i].cpu() / 2 + 0.5), visualize_segmap(fake_parse_gauss.cpu(), batch=i),
+                        (output[i].cpu() / 2 + 0.5), (im[i].cpu() / 2 + 0.5)],
+                        nrow=4)
+                    board.add_images(f'test_images/{i}', grid.unsqueeze(0), step + 1)
+                
+            generator.train()
+
+        if (step + 1) % opt.val_count == 0:
+            generator.eval()
+            T2 = transforms.Compose([transforms.Resize((128, 128))])
+            lpips_list = []
+            avg_distance = 0.0
+            
+            with torch.no_grad():
+                print("LPIPS")
+                for i in tqdm(range(5)):
+                    inputs = test_loader.next_batch()
+                    # input
+                    agnostic = inputs['agnostic'].cuda()
+                    parse_GT = inputs['parse'].cuda()
+                    pose = inputs['densepose'].cuda()
+                    parse_cloth = inputs['parse_cloth'].cuda()
+                    parse_agnostic = inputs['parse_agnostic'].cuda()
+                    pcm = inputs['pcm'].cuda()
+                    cm = inputs['cloth_mask']['paired'].cuda()
+                    c_paired = inputs['cloth']['paired'].cuda()
+                    
+                    # target
+                    im = inputs['image'].cuda()
+                                
+                    with torch.no_grad():
+                        if not opt.GT:
+                            # Warping Cloth
+                            # down
+                            pre_clothes_mask_down = F.interpolate(cm, size=(256, 192), mode='nearest')
+                            input_parse_agnostic_down = F.interpolate(parse_agnostic, size=(256, 192), mode='nearest')
+                            clothes_down = F.interpolate(c_paired, size=(256, 192), mode='bilinear')
+                            densepose_down = F.interpolate(pose, size=(256, 192), mode='bilinear')
+                            
+                            # multi-task inputs
+                            input1 = torch.cat([clothes_down, pre_clothes_mask_down], 1)
+                            input2 = torch.cat([input_parse_agnostic_down, densepose_down], 1)
+
+                            # forward
+                            # flow_list, fake_segmap, _, warped_clothmask_paired = gen(opt, input1, input2)
+                            
+                            if opt.segment_anything and step >= (opt.niter + opt.niter_decay) // 3:
+                                flow_list, fake_segmap, _, warped_clothmask_paired = gen(opt, input1, input2, im_c=parse_cloth)
+                            else:
+                                flow_list, fake_segmap, _, warped_clothmask_paired = gen(opt, input1, input2)
+                            
+                            # warped cloth mask one hot 
+                            warped_cm_onehot = torch.FloatTensor((warped_clothmask_paired.detach().cpu().numpy() > 0.5).astype(np.float32)).cuda()
+                            
+                            if opt.clothmask_composition != 'no_composition':
+                                if opt.clothmask_composition == 'detach':
+                                    cloth_mask = torch.ones_like(fake_segmap)
+                                    cloth_mask[:,3:4, :, :] = warped_cm_onehot
+                                    fake_segmap = fake_segmap * cloth_mask
+                                    
+                                if opt.clothmask_composition == 'warp_grad':
+                                    cloth_mask = torch.ones_like(fake_segmap)
+                                    cloth_mask[:,3:4, :, :] = warped_clothmask_paired
+                                    fake_segmap = fake_segmap * cloth_mask
+                                    
+                            # warped cloth
+                            N, _, iH, iW = c_paired.shape
+                            flow = F.interpolate(flow_list[-1].permute(0, 3, 1, 2), size=(iH, iW), mode='bilinear').permute(0, 2, 3, 1)
+                            flow_norm = torch.cat([flow[:, :, :, 0:1] / ((96 - 1.0) / 2.0), flow[:, :, :, 1:2] / ((128 - 1.0) / 2.0)], 3)
+                            
+                            grid = make_grid(N, iH, iW,opt)
+                            warped_grid = grid + flow_norm
+                            warped_cloth_paired = F.grid_sample(c_paired, warped_grid, padding_mode='border').detach()
+                            warped_clothmask = F.grid_sample(cm, warped_grid, padding_mode='border')
+
+                            # make generator input parse map
+                            fake_parse_gauss = gauss(F.interpolate(fake_segmap, size=(iH, iW), mode='bilinear'))
+                            fake_parse = fake_parse_gauss.argmax(dim=1)[:, None]
+
+                            if opt.occlusion:
+                                warped_clothmask = remove_overlap(F.softmax(fake_parse_gauss, dim=1), warped_clothmask)
+                                warped_cloth_paired = warped_cloth_paired * warped_clothmask + torch.ones_like(warped_cloth_paired) * (1-warped_clothmask)
+                                warped_cloth_paired = warped_cloth_paired.detach()
+
+                        else:
+                            # parse pre-process
+                            fake_parse = parse_GT.argmax(dim=1)[:, None]
+                            warped_cloth_paired = parse_cloth
+                            
+                        old_parse = torch.FloatTensor(fake_parse.size(0), 13, opt.fine_height, opt.fine_width).zero_().cuda()
+                        old_parse.scatter_(1, fake_parse, 1.0)
+
+                        labels = {
+                            0:  ['background',  [0]],
+                            1:  ['paste',       [2, 4, 7, 8, 9, 10, 11]],
+                            2:  ['upper',       [3]],
+                            3:  ['hair',        [1]],
+                            4:  ['left_arm',    [5]],
+                            5:  ['right_arm',   [6]],
+                            6:  ['noise',       [12]]
+                        }
+                        parse = torch.FloatTensor(fake_parse.size(0), 7, opt.fine_height, opt.fine_width).zero_().cuda()
+                        for i in range(len(labels)):
+                            for label in labels[i][1]:
+                                parse[:, i] += old_parse[:, label]
+                                
+                        parse = parse.detach()
+                    
+                    output_paired = generator(torch.cat((agnostic, pose, warped_cloth_paired), dim=1), parse)
+                    
+                    avg_distance += model.forward(T2(im), T2(output_paired))
+                    
+            avg_distance = avg_distance / 1
+            print(f"LPIPS{avg_distance}")
+            average_distance = avg_distance.squeeze().mean()
+            board.add_scalar('test/LPIPS', average_distance, step + 1)    
+            generator.train()
+
+        if (step + 1) % opt.save_period == 0:
+            t = time.time() - iter_start_time
+            print("step: %8d, time: %.3f, G_loss: %.4f, G_adv_loss: %.4f, D_loss: %.4f, D_fake_loss: %.4f, D_real_loss: %.4f"
+                  % (step + 1, t, loss_gen.item(), G_losses['GAN'].mean().item(), loss_dis.item(),
+                     D_losses['D_Fake'].mean().item(), D_losses['D_Real'].mean().item()), flush=True)
+         
+            if not os.path.exists(opt.gen_save_step_checkpoint_dir):
+                os.makedirs(opt.gen_save_step_checkpoint_dir)
+            save_checkpoint(generator,opt.gen_save_step_checkpoint % (step + 1), opt)
+            
+            if not os.path.exists(opt.gen_discriminator_save_step_checkpoint_dir):
+                os.makedirs(opt.gen_discriminator_save_step_checkpoint_dir)
+                
+            save_checkpoint(discriminator,opt.gen_discriminator_save_step_checkpoint % (step + 1), opt)
+
+        if (step + 1) % 1000 == 0:
+            scheduler_gen.step()
+            scheduler_dis.step()
+
+
+
+def get_root_experiment_runs(root_opt):
+    root_opt.experiment_run = root_opt.experiment_run.format(root_opt.experiment_number, root_opt.run_number)
+    root_opt.experiment_from_run = root_opt.experiment_from_run.format(root_opt.experiment_from_number, root_opt.run_from_number)
+    
+    root_opt.tocg_experiment_from_run = root_opt.tocg_experiment_from_run.format(root_opt.tocg_experiment_from_number, root_opt.tocg_run_from_number)
+    root_opt.tocg_discriminator_experiment_from_run = root_opt.tocg_discriminator_experiment_from_run.format(root_opt.tocg_discriminator_experiment_from_number, root_opt.tocg_discriminator_run_from_number)
+    
+    root_opt.gen_experiment_from_run = root_opt.gen_experiment_from_run.format(root_opt.gen_experiment_from_number, root_opt.gen_run_from_number)
+    root_opt.gen_discriminator_experiment_from_run = root_opt.gen_discriminator_experiment_from_run.format(root_opt.gen_discriminator_experiment_from_number, root_opt.gen_discriminator_run_from_number)
+    return root_opt
+
+def get_root_opt_experiment_dir(root_opt):
+    root_opt.rail_dir = root_opt.rail_dir.format(root_opt.dataset_name, root_opt.res, root_opt.datamode)    
+    root_opt.original_dir = root_opt.original_dir.format(root_opt.dataset_name, root_opt.res, root_opt.datamode)
+    if root_opt.res == 'low_res':
+        root_opt.original_dir = root_opt.original_dir.replace(root_opt.res, os.path.join(root_opt.res, root_opt.low_res_dataset_name))
+    # Current model
+    root_opt.this_viton_save_to_dir = os.path.join(root_opt.this_viton_save_to_dir, root_opt.VITON_Model)
+    root_opt.this_viton_load_from_dir = root_opt.this_viton_load_from_dir.format(root_opt.VITON_Type, root_opt.VITON_Name, root_opt.this_viton_load_from_dir)
+    root_opt.this_viton_load_from_dir = os.path.join(root_opt.this_viton_load_from_dir, root_opt.VITON_Model)
+    
+    # tocg
+    root_opt.tocg_experiment_from_dir = root_opt.tocg_experiment_from_dir.format(root_opt.VITON_Type, root_opt.VITON_Name, root_opt.tocg_load_from_model)
+    root_opt.tocg_experiment_from_dir = os.path.join(root_opt.tocg_experiment_from_dir, 'TOCG')
+    
+    # tocg discriminator
+    root_opt.tocg_discriminator_experiment_from_dir = root_opt.tocg_discriminator_experiment_from_dir.format(root_opt.VITON_Type, root_opt.VITON_Name, root_opt.tocg_discriminator_load_from_model)
+    root_opt.tocg_discriminator_experiment_from_dir = os.path.join(root_opt.tocg_discriminator_experiment_from_dir, root_opt.VITON_Model)    
+    
+    
+    # gen
+    root_opt.gen_experiment_from_dir = root_opt.gen_experiment_from_dir.format(root_opt.VITON_Type, root_opt.VITON_Name, root_opt.gen_load_from_model)
+    root_opt.gen_experiment_from_dir = os.path.join(root_opt.gen_experiment_from_dir, root_opt.VITON_Model)
+    
+    # gen discriminator
+    root_opt.gen_discriminator_experiment_from_dir = root_opt.gen_discriminator_experiment_from_dir.format(root_opt.VITON_Type, root_opt.VITON_Name, root_opt.gen_discriminator_load_from_model)
+    root_opt.gen_discriminator_experiment_from_dir = os.path.join(root_opt.gen_discriminator_experiment_from_dir, root_opt.VITON_Model)    
+    
+    return root_opt
+
+
+def get_root_opt_results_dir(parser, root_opt):
+    root_opt.transforms_dir = root_opt.transforms_dir.format(root_opt.dataset_name)
+    parser.tensorboard_dir = parser.tensorboard_dir.format(root_opt.experiment_run, root_opt.this_viton_save_to_dir)
+    parser.results_dir = parser.results_dir.format(root_opt.experiment_run, root_opt.this_viton_save_to_dir)
+    return parser, root_opt
+
+def copy_root_opt_to_opt(parser, root_opt):
+    parser.display_count = root_opt.display_count
+    parser.cuda = root_opt.cuda
+    parser.device = int(root_opt.device)
+    parser.dataset_name = root_opt.dataset_name
+    parser.warp_load_from_model = root_opt.warp_load_from_model
+    parser.load_last_step = root_opt.load_last_step if type(root_opt.load_last_step) == bool else eval(root_opt.load_last_step)
+    parser.run_wandb = root_opt.run_wandb
+    parser.viton_batch_size = root_opt.viton_batch_size
+    parser.save_period = root_opt.save_period
+    parser.print_step = root_opt.print_step
+    parser.niter = root_opt.niter
+    parser.niter_decay = root_opt.niter_decay
+    parser.VITON_Type = root_opt.VITON_Type
+    parser.VITON_selection_dir = parser.VITON_selection_dir.format(parser.VITON_Type, parser.VITON_Name)
+    return parser
+
+def get_root_opt_checkpoint_dir(opt, root_opt):
+    last_step = root_opt.load_last_step if type(root_opt.load_last_step) == bool else eval(root_opt.load_last_step)
+    sort_digit = lambda name: int(name.split('_')[-1].split('.')[0])
+    # ================================= tocg =================================
+    opt.tocg_save_step_checkpoint_dir = opt.tocg_save_step_checkpoint_dir.format(root_opt.experiment_run, root_opt.this_viton_save_to_dir)
+    opt.tocg_save_step_checkpoint_dir = fix(opt.tocg_save_step_checkpoint_dir)
+    opt.tocg_save_step_checkpoint = os.path.join(opt.tocg_save_step_checkpoint_dir, opt.tocg_save_step_checkpoint)
+    opt.tocg_save_step_checkpoint = fix(opt.checkpoint_root_dir + "/" + opt.tocg_save_step_checkpoint)
+    opt.tocg_save_step_checkpoint_dir = os.path.join("/",*opt.tocg_save_step_checkpoint.split("/")[:-1])
+    
+    opt.tocg_save_final_checkpoint_dir = opt.tocg_save_final_checkpoint_dir.format(root_opt.experiment_run, root_opt.this_viton_save_to_dir)
+    opt.tocg_save_final_checkpoint_dir = fix(opt.tocg_save_final_checkpoint_dir)
+    opt.tocg_save_final_checkpoint = os.path.join(opt.tocg_save_final_checkpoint_dir, opt.tocg_save_final_checkpoint)
+    opt.tocg_save_final_checkpoint = fix(opt.checkpoint_root_dir + "/" + opt.tocg_save_final_checkpoint)
+    opt.tocg_save_final_checkpoint_dir = os.path.join("/",*opt.tocg_save_final_checkpoint.split("/")[:-1])
+    
+    opt.tocg_load_final_checkpoint_dir = opt.tocg_load_final_checkpoint_dir.format(root_opt.tocg_experiment_from_run, root_opt.tocg_experiment_from_dir)
+    opt.tocg_load_final_checkpoint_dir = fix(opt.tocg_load_final_checkpoint_dir)
+    opt.tocg_load_final_checkpoint = os.path.join(opt.tocg_load_final_checkpoint_dir, opt.tocg_load_final_checkpoint)
+    opt.tocg_load_final_checkpoint = fix(opt.checkpoint_root_dir + "/" + opt.tocg_load_final_checkpoint)
+    opt.tocg_load_final_checkpoint_dir = os.path.join("/",*opt.tocg_load_final_checkpoint.split("/")[:-1])
+    
+    if not last_step:
+        opt.tocg_load_step_checkpoint_dir = opt.tocg_load_step_checkpoint_dir.format(root_opt.tocg_experiment_from_run, root_opt.tocg_experiment_from_dir)
+    else:
+        opt.tocg_load_step_checkpoint_dir = opt.tocg_load_step_checkpoint_dir.format(root_opt.tocg_experiment_from_run, root_opt.this_viton_save_to_dir)
+    opt.tocg_load_step_checkpoint_dir = fix(opt.tocg_load_step_checkpoint_dir)
+    if not last_step:
+        opt.tocg_load_step_checkpoint = os.path.join(opt.tocg_load_step_checkpoint_dir, opt.tocg_load_step_checkpoint)
+    else:
+        if os.path.isdir(opt.tocg_load_step_checkpoint_dir.format(root_opt.tocg_experiment_from_run, root_opt.this_viton_save_to_dir)):
+            os_list = os.listdir(opt.tocg_load_step_checkpoint_dir.format(root_opt.tocg_experiment_from_run, root_opt.this_viton_save_to_dir))
+            os_list = [string for string in os_list if "tocg" in string]
+            last_step = sorted(os_list, key=sort_digit)[-1]
+            opt.tocg_load_step_checkpoint = os.path.join(opt.tocg_load_step_checkpoint_dir, last_step)
+    opt.tocg_load_step_checkpoint = fix(opt.checkpoint_root_dir + "/" + opt.tocg_load_step_checkpoint)
+    opt.tocg_load_step_checkpoint_dir = os.path.join("/",*opt.tocg_load_step_checkpoint.split("/")[:-1])
+    # ================================= tocg DISCRIMINATOR =================================
+    opt.tocg_discriminator_save_step_checkpoint_dir = opt.tocg_discriminator_save_step_checkpoint_dir.format(root_opt.experiment_run, root_opt.this_viton_save_to_dir)
+    opt.tocg_discriminator_save_step_checkpoint_dir = fix(opt.tocg_discriminator_save_step_checkpoint_dir)
+    opt.tocg_discriminator_save_step_checkpoint = os.path.join(opt.tocg_discriminator_save_step_checkpoint_dir, opt.tocg_discriminator_save_step_checkpoint)
+    opt.tocg_discriminator_save_step_checkpoint = fix(opt.checkpoint_root_dir + "/" + opt.tocg_discriminator_save_step_checkpoint)
+    opt.tocg_discriminator_save_step_checkpoint_dir = os.path.join("/",*opt.tocg_discriminator_save_step_checkpoint.split("/")[:-1])
+    
+    opt.tocg_discriminator_save_final_checkpoint_dir = opt.tocg_discriminator_save_final_checkpoint_dir.format(root_opt.experiment_run, root_opt.this_viton_save_to_dir)
+    opt.tocg_discriminator_save_final_checkpoint_dir = fix(opt.tocg_discriminator_save_final_checkpoint_dir)
+    opt.tocg_discriminator_save_final_checkpoint = os.path.join(opt.tocg_discriminator_save_final_checkpoint_dir, opt.tocg_discriminator_save_final_checkpoint)
+    opt.tocg_discriminator_save_final_checkpoint = fix(opt.checkpoint_root_dir + "/" + opt.tocg_discriminator_save_final_checkpoint)
+    opt.tocg_discriminator_save_final_checkpoint_dir = os.path.join("/",*opt.tocg_discriminator_save_final_checkpoint.split("/")[:-1])
+    
+    
+    opt.tocg_discriminator_load_final_checkpoint_dir = opt.tocg_discriminator_load_final_checkpoint_dir.format(root_opt.tocg_experiment_from_run, root_opt.tocg_discriminator_experiment_from_dir)
+    opt.tocg_discriminator_load_final_checkpoint_dir = fix(opt.tocg_discriminator_load_final_checkpoint_dir)
+    opt.tocg_discriminator_load_final_checkpoint = os.path.join(opt.tocg_discriminator_load_final_checkpoint_dir, opt.tocg_discriminator_load_final_checkpoint)
+    opt.tocg_discriminator_load_final_checkpoint = fix(opt.checkpoint_root_dir + "/" + opt.tocg_discriminator_load_final_checkpoint)
+    opt.tocg_discriminator_load_final_checkpoint_dir = os.path.join("/",*opt.tocg_discriminator_load_final_checkpoint.split("/")[:-1])
+
+    if not last_step:
+        opt.tocg_discriminator_load_step_checkpoint_dir = opt.tocg_discriminator_load_step_checkpoint_dir.format(root_opt.tocg_discriminator_experiment_from_run, root_opt.tocg_discriminator_experiment_from_dir)
+    else:
+        opt.tocg_discriminator_load_step_checkpoint_dir = opt.tocg_discriminator_load_step_checkpoint_dir.format(root_opt.tocg_discriminator_experiment_from_run, root_opt.this_viton_save_to_dir)
+    opt.tocg_discriminator_load_step_checkpoint_dir = fix(opt.tocg_discriminator_load_step_checkpoint_dir)
+    if not last_step:
+        opt.tocg_discriminator_load_step_checkpoint = os.path.join(opt.tocg_discriminator_load_step_checkpoint_dir, opt.tocg_discriminator_load_step_checkpoint)
+    else:
+        if os.path.isdir(opt.tocg_discriminator_load_step_checkpoint_dir.format(root_opt.tocg_discriminator_experiment_from_run, root_opt.this_viton_save_to_dir)):
+            os_list = os.listdir(opt.tocg_discriminator_load_step_checkpoint_dir.format(root_opt.tocg_discriminator_experiment_from_run, root_opt.this_viton_save_to_dir))
+            os_list = [string for string in os_list if "tocg_discriminator" in string]
+            last_step = sorted(os_list, key=sort_digit)[-1]
+            opt.tocg_discriminator_load_step_checkpoint = os.path.join(opt.tocg_discriminator_load_step_checkpoint_dir, last_step)
+    opt.tocg_discriminator_load_step_checkpoint = fix(opt.checkpoint_root_dir + "/" + opt.tocg_discriminator_load_step_checkpoint)
+    opt.tocg_discriminator_load_step_checkpoint_dir = os.path.join("/",*opt.tocg_discriminator_load_step_checkpoint.split("/")[:-1])
+    # ================================= gen =================================
+    opt.gen_save_step_checkpoint_dir = opt.gen_save_step_checkpoint_dir.format(root_opt.experiment_run, root_opt.this_viton_save_to_dir)
+    opt.gen_save_step_checkpoint_dir = fix(opt.gen_save_step_checkpoint_dir)
+    opt.gen_save_step_checkpoint = os.path.join(opt.gen_save_step_checkpoint_dir, opt.gen_save_step_checkpoint)
+    opt.gen_save_step_checkpoint = fix(opt.checkpoint_root_dir + "/" + opt.gen_save_step_checkpoint)
+    opt.gen_save_step_checkpoint_dir = os.path.join("/",*opt.gen_save_step_checkpoint.split("/")[:-1])
+    
+    opt.gen_save_final_checkpoint_dir = opt.gen_save_final_checkpoint_dir.format(root_opt.experiment_run, root_opt.this_viton_save_to_dir)
+    opt.gen_save_final_checkpoint_dir = fix(opt.gen_save_final_checkpoint_dir)
+    opt.gen_save_final_checkpoint = os.path.join(opt.gen_save_final_checkpoint_dir, opt.gen_save_final_checkpoint)
+    opt.gen_save_final_checkpoint = fix(opt.checkpoint_root_dir + "/" + opt.gen_save_final_checkpoint)
+    opt.gen_save_final_checkpoint_dir = os.path.join("/",*opt.gen_save_final_checkpoint.split("/")[:-1])
+    
+    opt.gen_load_final_checkpoint_dir = opt.gen_load_final_checkpoint_dir.format(root_opt.gen_experiment_from_run, root_opt.gen_experiment_from_dir)
+    opt.gen_load_final_checkpoint_dir = fix(opt.gen_load_final_checkpoint_dir)
+    opt.gen_load_final_checkpoint = os.path.join(opt.gen_load_final_checkpoint_dir, opt.gen_load_final_checkpoint)
+    opt.gen_load_final_checkpoint = fix(opt.checkpoint_root_dir + "/" + opt.gen_load_final_checkpoint)
+    opt.gen_load_final_checkpoint_dir = os.path.join("/",*opt.gen_load_final_checkpoint.split("/")[:-1])
+    
+    if not last_step:
+        opt.gen_load_step_checkpoint_dir = opt.gen_load_step_checkpoint_dir.format(root_opt.gen_experiment_from_run, root_opt.gen_experiment_from_dir)
+    else:
+        opt.gen_load_step_checkpoint_dir = opt.gen_load_step_checkpoint_dir.format(root_opt.gen_experiment_from_run, root_opt.this_viton_save_to_dir)
+    opt.gen_load_step_checkpoint_dir = fix(opt.gen_load_step_checkpoint_dir)
+    if not last_step:
+        opt.gen_load_step_checkpoint = os.path.join(opt.gen_load_step_checkpoint_dir, opt.gen_load_step_checkpoint)
+    else:
+        if os.path.isdir(opt.gen_load_step_checkpoint_dir.format(root_opt.gen_experiment_from_run, root_opt.this_viton_save_to_dir)):
+            os_list = os.listdir(opt.gen_load_step_checkpoint_dir.format(root_opt.gen_experiment_from_run, root_opt.this_viton_save_to_dir))
+            os_list = [string for string in os_list if "gen" in string]
+            last_step = sorted(os_list, key=sort_digit)[-1]
+            opt.gen_load_step_checkpoint = os.path.join(opt.gen_load_step_checkpoint_dir, last_step)
+    opt.gen_load_step_checkpoint = fix(opt.checkpoint_root_dir + "/" + opt.gen_load_step_checkpoint)
+    opt.gen_load_step_checkpoint_dir = os.path.join("/",*opt.gen_load_step_checkpoint.split("/")[:-1])
+    # ================================= gen DISCRIMINATOR =================================
+    opt.gen_discriminator_save_step_checkpoint_dir = opt.gen_discriminator_save_step_checkpoint_dir.format(root_opt.experiment_run, root_opt.this_viton_save_to_dir)
+    opt.gen_discriminator_save_step_checkpoint_dir = fix(opt.gen_discriminator_save_step_checkpoint_dir)
+    opt.gen_discriminator_save_step_checkpoint = os.path.join(opt.gen_discriminator_save_step_checkpoint_dir, opt.gen_discriminator_save_step_checkpoint)
+    opt.gen_discriminator_save_step_checkpoint = fix(opt.checkpoint_root_dir + "/" + opt.gen_discriminator_save_step_checkpoint)
+    opt.gen_discriminator_save_step_checkpoint_dir = os.path.join("/",*opt.gen_discriminator_save_step_checkpoint.split("/")[:-1])
+    
+    opt.gen_discriminator_save_final_checkpoint_dir = opt.gen_discriminator_save_final_checkpoint_dir.format(root_opt.experiment_run, root_opt.this_viton_save_to_dir)
+    opt.gen_discriminator_save_final_checkpoint_dir = fix(opt.gen_discriminator_save_final_checkpoint_dir)
+    opt.gen_discriminator_save_final_checkpoint = os.path.join(opt.gen_discriminator_save_final_checkpoint_dir, opt.gen_discriminator_save_final_checkpoint)
+    opt.gen_discriminator_save_final_checkpoint = fix(opt.checkpoint_root_dir + "/" + opt.gen_discriminator_save_final_checkpoint)
+    opt.gen_discriminator_save_final_checkpoint_dir = os.path.join("/",*opt.gen_discriminator_save_final_checkpoint.split("/")[:-1])
+    
+    opt.gen_discriminator_load_final_checkpoint_dir = opt.gen_discriminator_load_final_checkpoint_dir.format(root_opt.gen_experiment_from_run, root_opt.gen_discriminator_experiment_from_dir)
+    opt.gen_discriminator_load_final_checkpoint_dir = fix(opt.gen_discriminator_load_final_checkpoint_dir)
+    opt.gen_discriminator_load_final_checkpoint = os.path.join(opt.gen_discriminator_load_final_checkpoint_dir, opt.gen_discriminator_load_final_checkpoint)
+    opt.gen_discriminator_load_final_checkpoint = fix(opt.checkpoint_root_dir + "/" + opt.gen_discriminator_load_final_checkpoint)
+    opt.gen_discriminator_load_final_checkpoint_dir = os.path.join("/",*opt.gen_discriminator_load_final_checkpoint.split("/")[:-1])
+    
+    if not last_step:
+        opt.gen_discriminator_load_step_checkpoint_dir = opt.gen_discriminator_load_step_checkpoint_dir.format(root_opt.gen_discriminator_experiment_from_run, root_opt.gen_discriminator_experiment_from_dir)
+    else:
+        opt.gen_discriminator_load_step_checkpoint_dir = opt.gen_discriminator_load_step_checkpoint_dir.format(root_opt.gen_discriminator_experiment_from_run, root_opt.this_viton_save_to_dir)
+    opt.gen_discriminator_load_step_checkpoint_dir = fix(opt.gen_discriminator_load_step_checkpoint_dir)
+    if not last_step:
+        opt.gen_discriminator_load_step_checkpoint = os.path.join(opt.gen_discriminator_load_step_checkpoint_dir, opt.gen_discriminator_load_step_checkpoint)
+    else:
+        if os.path.isdir(opt.gen_discriminator_load_step_checkpoint_dir.format(root_opt.gen_discriminator_experiment_from_run, root_opt.this_viton_save_to_dir)):
+            os_list = os.listdir(opt.gen_discriminator_load_step_checkpoint_dir.format(root_opt.gen_discriminator_experiment_from_run, root_opt.this_viton_save_to_dir))
+            os_list = [string for string in os_list if "gen_discriminator" in string]
+            last_step = sorted(os_list, key=sort_digit)[-1]
+            opt.gen_discriminator_load_step_checkpoint = os.path.join(opt.gen_discriminator_load_step_checkpoint_dir, last_step)
+    opt.gen_discriminator_load_step_checkpoint = fix(opt.checkpoint_root_dir + "/" + opt.gen_discriminator_load_step_checkpoint)
+    opt.gen_discriminator_load_step_checkpoint_dir = os.path.join("/",*opt.gen_discriminator_load_step_checkpoint.split("/")[:-1])
+    return opt
+
+def get_root_opt_results_dir(parser, root_opt):
+    root_opt.transforms_dir = root_opt.transforms_dir.format(root_opt.dataset_name)
+    parser.tensorboard_dir = parser.tensorboard_dir.format(root_opt.experiment_run, root_opt.this_viton_save_to_dir)
+    parser.results_dir = parser.results_dir.format(root_opt.experiment_run, root_opt.this_viton_save_to_dir)
+    return parser, root_opt
+
+def copy_root_opt_to_opt(parser, root_opt):
+    parser.display_count = root_opt.display_count
+    parser.cuda = root_opt.cuda
+    parser.device = int(root_opt.device)
+    parser.dataset_name = root_opt.dataset_name
+    parser.load_last_step = root_opt.load_last_step if type(root_opt.load_last_step) == bool else eval(root_opt.load_last_step)
+    parser.run_wandb = root_opt.run_wandb
+    parser.viton_batch_size = root_opt.viton_batch_size
+    parser.save_period = root_opt.save_period
+    parser.print_step = root_opt.print_step
+    parser.niter = root_opt.niter
+    parser.niter_decay = root_opt.niter_decay
+    parser.VITON_Type = root_opt.VITON_Type
+    parser.VITON_selection_dir = parser.VITON_selection_dir.format(parser.VITON_Type, parser.VITON_Name)
+    return parser
+
+def process_opt(opt, root_opt):
+    parser = opt
+    parser = argparse.Namespace(**parser)
+    root_opt = get_root_experiment_runs(root_opt)
+    root_opt = get_root_opt_experiment_dir(root_opt)
+    parser = get_root_opt_checkpoint_dir(parser, root_opt)
+    parser, root_opt = get_root_opt_results_dir(parser, root_opt)    
+    parser = copy_root_opt_to_opt(parser, root_opt)
+    return parser, root_opt
+
+
+def train_tryon_(opt, root_opt, run_wandb=False):
+    opt,root_opt = process_opt(opt, root_opt)
+    if run_wandb:
+        import wandb
+        wandb.login()
+        wandb.init(
+        project="Fashion-NeRF",
+        entity='prime_lab',
+        notes=f"{root_opt.question}",
+        tags=[f"{root_opt.experiment_run}"],
+        config=vars(opt)
+        )
+    else:
+        wandb = None
+    if wandb is not None:
+        temp_opt = vars(opt)
+        temp_opt['wandb_name'] = wandb.run.name
+        opt = argparse.Namespace(**temp_opt)
+    _train_tryon_(opt, root_opt,  wandb=wandb)
+
+def print_log(log_path, content, to_print=True):
+    import os
+    if os.path.exists(log_path):
+        with open(log_path, 'a') as f:
+            f.write(content)
+            f.write('\n')
+
+        if to_print:
+            print(content)
+
+
+def _train_tryon_(opt, root_opt, wandb=None):
+    if not os.path.exists(opt.tensorboard_dir):
+        os.makedirs(opt.tensorboard_dir)
+    board = SummaryWriter(log_dir = opt.tensorboard_dir)
+    torch.cuda.set_device(opt.device)
+    experiment_string = f"{root_opt.experiment_run.replace('/','_')}_{root_opt.opt_vton_yaml.replace('yaml/','')}"
+    with open(os.path.join(root_opt.experiment_run_yaml, experiment_string), 'w') as outfile:
+        yaml.dump(vars(opt), outfile, default_flow_style=False)
+    # Directories
+    log_path = os.path.join(opt.results_dir, 'log.txt')
+    if not os.path.exists(opt.results_dir):
+        os.makedirs(opt.results_dir)
+        with open(log_path, 'w') as file:
+            file.write(f"Hello, this is experiment {root_opt.experiment_run} \n")
+            
+    # print("Start to train %s!" % opt.name)
+    train_dataset = FashionNeRFDataset(root_opt, opt, viton=True, model='viton')
+    # warping-seg Model
+    input1_nc = 4  # cloth + cloth-mask
+    input2_nc = opt.semantic_nc + 3  # parse_agnostic + densepose
+    
+    sam = None
+    if opt.segment_anything:
+        sam = get_sam(opt)
+        
+        
+    gen = ConditionGenerator(opt, input1_nc=input1_nc, input2_nc=input2_nc, output_nc=13, ngf=96, norm_layer=nn.BatchNorm2d,segment_anything=sam)
+    if os.path.exists(opt.tocg_load_final_checkpoint):
+        load_checkpoint(gen, opt.tocg_load_final_checkpoint)
+
+    # Generator model
+    generator = SPADEGenerator(opt, 3+3+3)
+    generator.print_network()
+    generator.init_weights(opt.init_type, opt.init_variance)
+    discriminator = create_network(MultiscaleDiscriminator, opt)
+
+    # lpips
+    model = models.PerceptualLoss(model='net-lin',net='alex',use_gpu=True)
+
+    train_loader = FashionDataLoader(train_dataset, opt.viton_batch_size, opt.viton_workers, True)
+    test_dataset = FashionNeRFDataset(root_opt, opt, viton=True, mode='test', model='viton')
+    test_loader = FashionDataLoader(test_dataset, opt.num_test_visualize, 1, False)
+
+    # Load gen Checkpoint
+    last_step = root_opt.load_last_step if type(root_opt.load_last_step) == bool else eval(root_opt.load_last_step)
+    if last_step:
+        load_checkpoint(generator, opt.gen_load_step_checkpoint)
+        print_log(log_path, f'Load pretrained model from {opt.gen_load_step_checkpoint}')
+    elif os.path.exists(opt.gen_load_final_checkpoint):
+        load_checkpoint(generator, opt.gen_load_final_checkpoint)
+        print_log(log_path, f'Load pretrained model from {opt.gen_load_final_checkpoint}')
+        
+
+    if last_step:
+        load_checkpoint(discriminator, opt.gen_discriminator_load_step_checkpoint)
+        print_log(log_path, f'Load pretrained model from {opt.gen_discriminator_load_step_checkpoint}')
+    elif os.path.exists(opt.gen_discriminator_load_final_checkpoint):
+        load_checkpoint(discriminator, opt.gen_discriminator_load_final_checkpoint)
+        print_log(log_path, f'Load pretrained model from {opt.gen_discriminator_load_final_checkpoint}')
+    train_try_on_generator(opt, train_loader, test_loader, board,gen, generator, discriminator, model, wandb)
+    
+    if not os.path.exists(opt.gen_save_final_checkpoint_dir):
+        os.makedirs(opt.gen_save_final_checkpoint_dir)
+    save_checkpoint(generator,opt.gen_save_final_checkpoint, opt)
+    if not os.path.exists(opt.gen_discriminator_save_final_checkpoint_dir):
+        os.makedirs(opt.gen_discriminator_save_final_checkpoint_dir)
+    save_checkpoint(discriminator,opt.gen_discriminator_save_final_checkpoint , opt)
+
+    print("Finished training %s!" % opt.name)

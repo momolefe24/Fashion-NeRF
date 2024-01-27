@@ -1,0 +1,63 @@
+#!/bin/bash
+#SBATCH -N 1
+#SBATCH -t 72:00:00
+#SBATCH --exclude=mscluster68,mscluster48,mscluster82
+#SBATCH --ntasks=1
+#SBATCH --partition=bigbatch
+
+echo ------------------------------------------------------
+echo -n 'Job is running on node ' $SLURM_JOB_NODELIST
+echo ------------------------------------------------------
+echo SLURM: sbatch is running on $SLURM_SUBMIT_HOST
+echo SLURM: job ID is $SLURM_JOB_ID
+echo SLURM: submit directory is $SLURM_SUBMIT_DIR
+echo SLURM: number of nodes allocated is $SLURM_JOB_NUM_NODES
+echo SLURM: number of cores is $SLURM_NTASKS
+echo SLURM: job name is $SLURM_JOB_NAME
+echo ------------------------------------------------------
+
+/bin/hostname
+nvidia-smi
+source ~/.bashrc
+conda activate NeRF
+export CUDA_VISIBLE_DEVICES=0
+echo "Launching the script ${SLURM_JOB_NAME}"
+# ./scripts/viton/viton.sh $SLURM_JOB_NAME {experiment_number}  {run_number} {experiment_from}  {run_number_from}
+# ./scripts/viton/viton.sh $SLURM_JOB_NAME 1 6 1 6
+
+
+export EXPERIMENT_NUMBER=17
+export EXPERIMENT_FROM_NUMBER=17
+export RUN_NUMBER=99
+export RUN_FROM_NUMBER=1
+export DATASET_NAME=Original
+export TASK="PF_Gen"
+export DEBUG=1
+export DATAMODE=train
+export VITON_NAME=DM_VTON
+
+echo "Start Debug: $DEBUG"
+echo "Experiment Number: $EXPERIMENT_NUMBER"
+echo "Run Number: $RUN_NUMBER"
+echo "Dataset Name: $DATASET_NAME"
+
+
+# parser_based_warp_experiment_from_number 1 - Original
+# parser_based_warp_experiment_from_number 2 - Rail
+
+# parser_free_warp_experiment_from_number 15 - Original
+# parser_free_warp_experiment_from_number 16 - Rail
+
+# parser_free_gen_experiment_from_number 17 - Original
+# parser_free_gen_experiment_from_number 18 - Rail
+
+# Parser Free Gen
+./scripts/viton/viton.sh --job_name $VITON_NAME --task $TASK --experiment_number $EXPERIMENT_NUMBER --run_number $RUN_NUMBER \
+    --experiment_from_number 0 --run_from_number 0 \
+    --parser_based_warp_experiment_from_number 0 --parser_based_warp_run_from_number 0 --warp_load_from_model Original \
+    --parser_based_gen_experiment_from_number 0 --parser_based_gen_run_from_number 0 --gen_load_from_model Original \
+    --parser_free_warp_experiment_from_number 0 --parser_free_warp_run_from_number 0 --parser_free_warp_load_from_model Original \
+    --parser_free_gen_experiment_from_number 0 --parser_free_gen_run_from_number 0 --parser_free_gen_load_from_model Original \
+    --dataset_name $DATASET_NAME --device $DEVICE --load_last_step False --run_wandb $WANDB \
+    --niter 1 --niter_decay 1 --display_count 1 --print_step 1 --save_period 1 --val_count 1 \
+    --viton_batch_size 4 --datamode $DATAMODE --debug $DEBUG --sweeps $SWEEPS

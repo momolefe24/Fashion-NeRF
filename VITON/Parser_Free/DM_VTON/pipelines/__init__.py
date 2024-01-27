@@ -1,0 +1,1 @@
+from VITON.Parser_Free.DM_VTON.pipelines.dmvton_pipeline import DMVTONPipeline

@@ -1,0 +1,66 @@
+# =====================  Sweep Hyperparameters
+program: train_condition.py
+method: grid  # Can be grid, random, or bayes
+metric:
+  name: warping_loss
+  goal: minimize
+parameters:
+  lr:
+    values: [1e-5, 5e-5,3e-4,3e-5, 1e-4]
+  momentum:
+    values: [0.5, 0.9]
+  optimizer:
+    values: ['Adam', 'AdamW', 'SGD']
+  clothmask_composition: 
+    values: ['no_composition', 'detach', 'warp_grad']
+  segment_anything:
+    values: [True, False]
+  flow_self_attention:
+    values: [True, False]
+  flow_spatial_attention:
+    values: [True, False]
+  flow_channel_attention:
+    values: [True, False]
+  feature_pyramid_self_attention:
+    values: [True, False]
+  feature_pyramid_spatial_attention:
+    values: [True, False]
+  feature_pyramid_channel_attention:
+    values: [True, False]
+  G_lr:
+    values: [0.0001, 0.0002, 0.0003]
+  D_lr:
+    values: [0.0001, 0.0002, 0.0003]
+  CElamda:
+    values: [5, 10, 15]
+  GANlambda:
+    values: [0.5, 1, 1.5]
+  tvlambda:
+    values: [0.5, 1, 1.5]
+  loss_l1_cloth_lambda:
+    values: [5, 10, 15]
+  upsample:
+    values: ['bilinear', 'nearest']
+  occlusion:
+    values: [True, False]
+  num_D:
+    values: [1, 2, 3]
+  n_layers_D:
+    values: [3, 4, 5]
+  norm_G:
+    values: ['spectralaliasinstance', 'instance', 'batch']
+  norm_D:
+    values: ['spectralinstance', 'instance', 'batch']
+  init_type:
+    values: ['xavier', 'normal', 'orthogonal', 'none','xavier_uniform','kaiming']
+  num_upsampling_layers:
+    values: ['most', 'normal', 'more']
+  init_variance:
+    values: [0.01, 0.02, 0.03]
+  lambda_l1:
+    values: [0.5, 1.0, 1.5]
+  lambda_vgg:
+    values: [5.0, 10.0, 15.0]
+  lambda_feat:
+    values: [5.0, 10.0, 15.0]
+
