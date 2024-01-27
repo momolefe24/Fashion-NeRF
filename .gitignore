@@ -10,3 +10,4 @@ results/
 experiments/
 tensorboard/
 ResShift/
+FashionNeRF.yml
