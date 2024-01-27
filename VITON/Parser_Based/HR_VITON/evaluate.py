@@ -114,9 +114,10 @@ def Evaluation(opt, pred_list, gt_list):
 
 def evaluate_hrviton_tocg_(opt, root_opt):
     opt,root_opt = process_opt(opt, root_opt)
+    _evaluate_hrviton_tocg_(opt, root_opt)
     
-def evaluate_hrviton_tocg_(opt, root_opt):
-    prediction_list = os.listdir(os.path.join(opt.results_dir), 'prediction')
+def _evaluate_hrviton_tocg_(opt, root_opt):
+    prediction_list = os.listdir(os.path.join(opt.results_dir, 'prediction'))
     test_dataset = FashionNeRFDataset(root_opt, opt, viton=True, mode='test', model='viton')
     ground_truth_list = os.listdir(os.path.join(test_dataset.data_path))
     prediction_list.sort()

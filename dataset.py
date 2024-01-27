@@ -39,7 +39,7 @@ class FashionNeRFDataset(data.Dataset):
             data_items = glob(f"{self.data_path}/image/*")
         elif model == 'viton':
             self.full_input_data_path = os.path.join(root_opt.root_dir, root_opt.rail_dir)
-            if mode == "test":
+            if mode == "test" or mode =="evaluate":
                 self.full_input_data_path = self.full_input_data_path.replace("train", mode)
             self.data_path = self.full_input_data_path
             data_items = glob(f"{self.full_input_data_path}/image/*")
