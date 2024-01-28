@@ -23,8 +23,11 @@ def test(opt, test_loader, tocg, D=None):
         D.cuda()
         D.eval()
     prediction_dir = os.path.join(opt.results_dir, 'prediction')
+    ground_truth_dir = os.path.join(opt.results_dir, 'ground_truth')
     if not os.path.exists(prediction_dir):
         os.makedirs(prediction_dir)
+    if not os.path.exists(ground_truth_dir):
+        os.makedirs(ground_truth_dir)
     num = 0
     iter_start_time = time.time()
     if D is not None:
@@ -91,7 +94,9 @@ def test(opt, test_loader, tocg, D=None):
             misalign = fake_clothmask - warped_cm_onehot
             misalign[misalign < 0.0] = 0.0
             image_name = os.path.join(prediction_dir, inputs['im_name'][0])
+            ground_truth_image_name = os.path.join(ground_truth_dir, inputs['im_name'][0])
             save_image((warped_cloth_paired.cpu().detach() / 2 + 0.5), image_name)
+            save_image((im_c.cpu().detach() / 2 + 0.5), ground_truth_image_name)
         num += c_paired.shape[0]
         print(num)
     if D is not None:
