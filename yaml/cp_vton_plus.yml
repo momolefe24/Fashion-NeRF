@@ -54,7 +54,8 @@ datamode: "train"
 VITON_selection_dir: "VITON/{}/{}"
 rail_dir: "data/VITON/{}/processed/{}/{}"
 original_dir: "data/VITON/{}/processed/{}/{}"
-root_dir: "/home-mscluster/mmolefe/Playground/Synthesising Virtual Fashion Try-On with Neural Radiance Fields/Fashion-SuperNeRF"
+#root_dir: "/home-mscluster/mmolefe/Playground/Synthesising Virtual Fashion Try-On with Neural Radiance Fields/Fashion-SuperNeRF"
+root_dir: '/mnt/data/home/molefe/Playground/Synthesising Virtual Fashion Try-On with Neural Radiance Fields/Fashion-NeRF'
 checkpoint_root_dir: "/gluster/mmolefe"
 dataset_root_dir: "/datasets/mmolefe"
 model_dir: "VITON/Parser_Free/CP_VTON_plus/{}"
@@ -101,6 +102,8 @@ load_step: 0
 VITON_Model: GMM
 stage: GMM
 shuffle: True
+seed: 1
+segment_anything: False
 # =====================  Sweep Hyperparameters
 lr: 0.0002
 radius: 5

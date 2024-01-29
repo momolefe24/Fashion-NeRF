@@ -20,6 +20,7 @@ class CPDataset(data.Dataset):
         super(CPDataset, self).__init__()
         # base setting
         self.root_opt = root_opt
+        self.opt = opt
         self.root_dir = root_opt.root_dir
         if root_opt.dataset_name == "Rail":
             self.read_data_dir = osp.join(self.root_dir, root_opt.rail_dir)
@@ -74,9 +75,9 @@ class CPDataset(data.Dataset):
             c_name = f"{clothing_name}.jpg"
             c_path= osp.join(self.read_data_dir, 'train_color', c_name) if self.datamode == 'train' else osp.join(self.read_data_dir, 'test_color', c_name)
             cmask_path= osp.join(self.read_data_dir, 'train_edge', c_name) if self.datamode == 'train' else osp.join(self.read_data_dir, 'test_edge', c_name)
-            image_path = osp.join(self.read_data_dir, 'train_img', im_name) if self.datamode == 'train' else osp.join(self.read_data_dir, 'test_img', c_name)
-            parse_path = osp.join(self.read_data_dir, 'train_label', parse_name) if self.datamode == 'train' else osp.join(self.read_data_dir, 'test_label', c_name)
-            image_mask_path = osp.join(self.read_data_dir, 'train_mask', im_name) if self.datamode == 'train' else osp.join(self.read_data_dir, 'test_mask', c_name)
+            image_path = osp.join(self.read_data_dir, 'train_img', im_name) if self.datamode == 'train' else osp.join(self.read_data_dir, 'test_img', im_name)
+            parse_path = osp.join(self.read_data_dir, 'train_label', parse_name) if self.datamode == 'train' else osp.join(self.read_data_dir, 'test_label', parse_name)
+            image_mask_path = osp.join(self.read_data_dir, 'train_mask', im_name) if self.datamode == 'train' else osp.join(self.read_data_dir, 'test_mask', im_name)
         else:
             c_name = self.c_names[index]
             c_path= osp.join(self.read_data_dir, 'cloth', c_name)
@@ -183,7 +184,9 @@ class CPDataset(data.Dataset):
         else:    
             pose_name = im_name.replace('.jpg', '.json')
             pose_path = osp.join(self.read_data_dir, 'train_pose', pose_name)
-            
+        
+        if self.opt.datamode == 'test':
+           pose_path = pose_path.replace('train','test') 
         with open(pose_path, 'r') as f:
             pose_label = json.load(f)
             pose_data = pose_label['people'][0]['pose_keypoints']
@@ -270,31 +273,20 @@ class CPDataLoader(object):
         return batch
 
 
-if __name__ == "__main__":
-    print("Check the dataset for geometric matching module!")
+class CPDataTestLoader(object):
+    def __init__(self, opt, dataset):
+        super(CPDataTestLoader, self).__init__()
 
-    import argparse
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--dataroot", default="data")
-    parser.add_argument("--datamode", default="train")
-    parser.add_argument("--stage", default="GMM")
-    parser.add_argument("--data_list", default="train_pairs.txt")
-    parser.add_argument("--fine_width", type=int, default=192)
-    parser.add_argument("--fine_height", type=int, default=256)
-    parser.add_argument("--radius", type=int, default=3)
-    parser.add_argument("--shuffle", action='store_true',
-                        help='shuffle input data')
-    parser.add_argument('-b', '--batch-size', type=int, default=4)
-    parser.add_argument('-j', '--workers', type=int, default=1)
+        self.data_loader = torch.utils.data.DataLoader(
+                dataset, batch_size=1)
+        self.dataset = dataset
+        self.data_iter = self.data_loader.__iter__()
+       
+    def next_batch(self):
+        try:
+            batch = self.data_iter.__next__()
+        except StopIteration:
+            self.data_iter = self.data_loader.__iter__()
+            batch = self.data_iter.__next__()
 
-    opt = parser.parse_args()
-    dataset = CPDataset(opt)
-    data_loader = CPDataLoader(opt, dataset)
-
-    print('Size of the dataset: %05d, dataloader: %04d'
-          % (len(dataset), len(data_loader.data_loader)))
-    first_item = dataset.__getitem__(0)
-    first_batch = data_loader.next_batch()
-
-    from IPython import embed
-    embed()
+        return batch

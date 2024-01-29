@@ -38,22 +38,22 @@ if [ "$VITON_Name" == "DM_VTON" ]
 then 
     if [ "$task" == "PB_Warp" ]
     then 
-        sbatch -J "${VITON_Name}_${run_number}" -o "$output" -e "$error" slurms/viton/dm_vton/pb_warp_bigbatch.slurm
+        sbatch -J "${VITON_Name}_${run_number}" -o "$output" -e "$error" slurms/viton/dm_vton/pb_warp.slurm
     fi 
 
     if [ "$task" == "PB_Gen" ]
     then 
-       sbatch -J "${VITON_Name}_${run_number}" -o "$output" -e "$error" slurms/viton/dm_vton/pb_gen_bigbatch.slurm
+       sbatch -J "${VITON_Name}_${run_number}" -o "$output" -e "$error" slurms/viton/dm_vton/pb_gen.slurm
     fi 
 
     if [ "$task" == "PF_Warp" ]
     then 
-       sbatch -J "${VITON_Name}_${run_number}" -o "$output" -e "$error" slurms/viton/dm_vton/pf_warp_bigbatch.slurm
+       sbatch -J "${VITON_Name}_${run_number}" -o "$output" -e "$error" slurms/viton/dm_vton/pf_warp.slurm
     fi 
 
     if [ "$task" == "PF_Gen" ]
     then 
-        sbatch -J "${VITON_Name}_${run_number}" -o "$output" -e "$error" slurms/viton/dm_vton/pf_gen_bigbatch.slurm
+        sbatch -J "${VITON_Name}_${run_number}" -o "$output" -e "$error" slurms/viton/dm_vton/pf_gen.slurm
     fi 
 fi
 
@@ -61,22 +61,22 @@ if [ "$VITON_Name" == "PF_AFN" ]
 then 
     if [ "$task" == "PB_Warp" ]
     then 
-        sbatch -J "${VITON_Name}_${run_number}" -o "$output" -e "$error" slurms/viton/pf_afn/pb_warp_bigbatch.slurm
+        sbatch -J "${VITON_Name}_${run_number}" -o "$output" -e "$error" slurms/viton/pf_afn/pb_warp.slurm
     fi 
 
     if [ "$task" == "PB_Gen" ]
     then 
-       sbatch -J "${VITON_Name}_${run_number}" -o "$output" -e "$error" slurms/viton/pf_afn/pb_gen_bigbatch.slurm
+       sbatch -J "${VITON_Name}_${run_number}" -o "$output" -e "$error" slurms/viton/pf_afn/pb_gen.slurm
     fi 
 
     if [ "$task" == "PF_Warp" ]
     then 
-       sbatch -J "${VITON_Name}_${run_number}" -o "$output" -e "$error" slurms/viton/pf_afn/pf_warp_bigbatch.slurm
+       sbatch -J "${VITON_Name}_${run_number}" -o "$output" -e "$error" slurms/viton/pf_afn/pf_warp.slurm
     fi 
 
     if [ "$task" == "PF_Gen" ]
     then 
-        sbatch -J "${VITON_Name}_${run_number}" -o "$output" -e "$error" slurms/viton/pf_afn/pf_gen_bigbatch.slurm
+        sbatch -J "${VITON_Name}_${run_number}" -o "$output" -e "$error" slurms/viton/pf_afn/pf_gen.slurm
     fi 
 fi
 
@@ -84,12 +84,12 @@ if [ "$VITON_Name" == "HR_VITON" ]
 then 
     if [ "$task" == "TOCG" ]
     then 
-        sbatch -J "${VITON_Name}_${run_number}" -o "$output" -e "$error" slurms/viton/hrviton/train_tocg_hrviton.slurm
+        sbatch -J "${VITON_Name}_${run_number}" -o "$output" -e "$error" slurms/viton/hrviton/tocg_hrviton.slurm
     fi 
 
     if [ "$task" == "GEN" ]
     then 
-       sbatch -J "${VITON_Name}_${run_number}" -o "$output" -e "$error" slurms/viton/hrviton/train_gen_hrviton.slurm
+       sbatch -J "${VITON_Name}_${run_number}" -o "$output" -e "$error" slurms/viton/hrviton/gen_hrviton.slurm
     fi 
 fi
 

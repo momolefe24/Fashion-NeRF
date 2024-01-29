@@ -102,6 +102,7 @@ def copy_root_opt_to_opt(parser, root_opt):
     parser.run_wandb = root_opt.run_wandb
     parser.viton_batch_size = root_opt.viton_batch_size
     parser.save_period = root_opt.save_period
+    parser.seed = root_opt.seed
     parser.val_count = root_opt.val_count
     parser.print_step = root_opt.print_step
     parser.niter = root_opt.niter
@@ -317,7 +318,7 @@ def validate_batch(opt, root_opt, validation_loader, warp_model,total_steps, epo
             warped_wandb = get_wandb_image(e[0], wandb=wandb)
             warped_mask_wandb = get_wandb_image(f[0], wandb=wandb)
             my_table.add_data(wandb.Image((rgb).astype(np.uint8)), real_image_wandb,person_clothing_image_wandb,clothing_image_wandb,warped_wandb,warped_mask_wandb)
-            wandb.log({'val_warping_loss': loss_all,'val_loss_l1':loss_l1,'val_loss_vgg':loss_vgg,'Val_Table':my_table })
+            wandb.log({'val_warping_loss': loss_all,'val_l1_cloth':loss_l1,'val_loss_vgg':loss_vgg,'Val_Table':my_table })
         bgr=cv2.cvtColor(rgb,cv2.COLOR_RGB2BGR)
         if not os.path.exists(os.path.join(opt.results_dir, 'val')):
             os.makedirs(os.path.join(opt.results_dir, 'val'))
@@ -412,7 +413,7 @@ def train_batch(opt, root_opt, train_loader, warp_model,total_steps, epoch,crite
                     warped_wandb = get_wandb_image(e[0], wandb=wandb)
                     warped_mask_wandb = get_wandb_image(f[0], wandb=wandb)
                     my_table.add_data(wandb.Image((rgb).astype(np.uint8)), real_image_wandb,person_clothing_image_wandb,clothing_image_wandb,warped_wandb,warped_mask_wandb)
-                    wandb.log({'warping_loss': loss_all,'loss_l1':loss_l1,'loss_vgg':loss_vgg,'Table':my_table })
+                    wandb.log({'warping_loss': loss_all,'l1_cloth':loss_l1,'loss_vgg':loss_vgg,'Table':my_table })
                 bgr=cv2.cvtColor(rgb,cv2.COLOR_RGB2BGR)
                 cv2.imwrite(os.path.join(opt.results_dir, f"{step}.jpg"),bgr)
 

@@ -48,9 +48,9 @@ def morpho(mask,iter):
         tem=mask[i].squeeze().reshape(256,192,1)*255
         tem=tem.astype(np.uint8)
         tem=cv2.dilate(tem,kernel,iterations=iter)
-        tem=tem.astype(np.float64)
+        tem=tem.astype(float64)
         tem=tem.reshape(1,256,192)
-        new.append(tem.astype(np.float64)/255.0)
+        new.append(tem.astype(float64)/255.0)
     new=np.stack(new)
     return new
 
@@ -86,7 +86,7 @@ def generate_label_color(inputs, opt):
 def complete_compose(img,mask,label):
     label=label.cpu().numpy()
     M_f=label>0
-    M_f=M_f.astype(np.int32)
+    M_f=M_f.astype(int32)
     M_f=torch.FloatTensor(M_f).cuda()
     masked_img=img*(1-mask)
     M_c=(1-mask.cuda())*M_f
@@ -104,9 +104,9 @@ def compose(label,mask,color_mask,edge,color,noise):
 
 def changearm(data):
     label=data['label']
-    arm1=torch.FloatTensor((data['label'].cpu().numpy()==11).astype(np.int32))
-    arm2=torch.FloatTensor((data['label'].cpu().numpy()==13).astype(np.int32))
-    noise=torch.FloatTensor((data['label'].cpu().numpy()==7).astype(np.int32))
+    arm1=torch.FloatTensor((data['label'].cpu().numpy()==11).astype(int32))
+    arm2=torch.FloatTensor((data['label'].cpu().numpy()==13).astype(int32))
+    noise=torch.FloatTensor((data['label'].cpu().numpy()==7).astype(int32))
     label=label*(1-arm1)+arm1*4
     label=label*(1-arm2)+arm2*4
     label=label*(1-noise)+noise*4
@@ -139,6 +139,7 @@ def copy_root_opt_to_opt(parser, root_opt):
     parser.load_last_step = root_opt.load_last_step if type(root_opt.load_last_step) == bool else eval(root_opt.load_last_step)
     parser.run_wandb = root_opt.run_wandb
     parser.device = root_opt.device
+    parser.datamode = root_opt.datamode
     parser.viton_batch_size = root_opt.viton_batch_size
     parser.save_period = root_opt.save_period
     parser.print_step = root_opt.print_step
@@ -510,10 +511,10 @@ def train(step, dataloader, model, writer, wandb=None):
     epoch_iter = 0
     for i, data in enumerate(dataloader):   
         epoch_iter += opt.batchSize
-        t_mask = torch.FloatTensor((data['label'].cpu().numpy() == 7).astype(np.float))    
+        t_mask = torch.FloatTensor((data['label'].cpu().numpy() == 7).astype(float))    
         data['label']=data['label']*(1-t_mask)+t_mask*4
-        mask_clothes=torch.FloatTensor((data['label'].cpu().numpy()==4).astype(np.int))
-        mask_fore=torch.FloatTensor((data['label'].cpu().numpy()>0).astype(np.int))
+        mask_clothes=torch.FloatTensor((data['label'].cpu().numpy()==4).astype(int))
+        mask_fore=torch.FloatTensor((data['label'].cpu().numpy()>0).astype(int))
         img_fore=data['image']*mask_fore
         img_fore_wc=img_fore*mask_fore
         all_clothes_label=changearm(data)
@@ -631,10 +632,10 @@ def validate(step, dataloader, model, writer, wandb=None):
         for i, data in enumerate(dataloader):
             total_steps += opt.batchSize
             epoch_iter += opt.batchSize
-            t_mask = torch.FloatTensor((data['label'].cpu().numpy() == 7).astype(np.float))    
+            t_mask = torch.FloatTensor((data['label'].cpu().numpy() == 7).astype(float))    
             data['label']=data['label']*(1-t_mask)+t_mask*4
-            mask_clothes=torch.FloatTensor((data['label'].cpu().numpy()==4).astype(np.int))
-            mask_fore=torch.FloatTensor((data['label'].cpu().numpy()>0).astype(np.int))
+            mask_clothes=torch.FloatTensor((data['label'].cpu().numpy()==4).astype(int))
+            mask_fore=torch.FloatTensor((data['label'].cpu().numpy()>0).astype(int))
             img_fore=data['image']*mask_fore
             all_clothes_label=changearm(data)
             ############## Forward Pass ######################

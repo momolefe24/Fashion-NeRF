@@ -30,6 +30,7 @@ export EXPERIMENT_NUMBER=17
 export EXPERIMENT_FROM_NUMBER=17
 export RUN_NUMBER=99
 export RUN_FROM_NUMBER=1
+export SEED=1
 export DATASET_NAME=Original
 export TASK="PF_Gen"
 export DEBUG=1
@@ -60,4 +61,4 @@ echo "Dataset Name: $DATASET_NAME"
     --parser_free_gen_experiment_from_number 0 --parser_free_gen_run_from_number 0 --parser_free_gen_load_from_model Original \
     --dataset_name $DATASET_NAME --device $DEVICE --load_last_step False --run_wandb $WANDB \
     --niter 1 --niter_decay 1 --display_count 1 --print_step 1 --save_period 1 --val_count 1 \
-    --viton_batch_size 4 --datamode $DATAMODE --debug $DEBUG --sweeps $SWEEPS
+    --viton_batch_size 4 --datamode $DATAMODE --debug $DEBUG --sweeps $SWEEPS --seed $SEED

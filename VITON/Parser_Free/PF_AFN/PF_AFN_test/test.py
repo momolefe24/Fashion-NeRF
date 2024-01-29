@@ -1,6 +1,7 @@
 import time
 import argparse
-from VITON.Parser_Free.PF_AFN.PF_AFN_test.data.base_data_loader import CreateDataLoader
+from VITON.Parser_Free.PF_AFN.PF_AFN_test.data.base_data_loader import CreateDataLoader, CreateDataTestLoader
+from torchvision.utils import make_grid, save_image
 from VITON.Parser_Free.PF_AFN.PF_AFN_test.models.networks import ResUnetGenerator, load_checkpoint
 from VITON.Parser_Free.PF_AFN.PF_AFN_test.models.afwm import AFWM
 import torch.nn as nn
@@ -193,7 +194,7 @@ def test_pfafn_(opt, root_opt):
 
 def _test_pfafn_(opt, root_opt):
     start_epoch, epoch_iter = 1, 0
-    data_loader = CreateDataLoader(opt, root_opt)
+    data_loader = CreateDataTestLoader(opt, root_opt)
     dataset = data_loader.load_data()
     dataset_size = len(data_loader)
     print(dataset_size)
@@ -213,47 +214,57 @@ def _test_pfafn_(opt, root_opt):
     total_steps = (start_epoch-1) * dataset_size + epoch_iter
     step = 0
     step_per_batch = dataset_size / opt.viton_batch_size
+    prediction_dir = os.path.join(opt.results_dir, 'prediction')
+    ground_truth_dir = os.path.join(opt.results_dir, 'ground_truth')
+    ground_truth_mask_dir = os.path.join(opt.results_dir, 'ground_truth_mask')
+    if not os.path.exists(prediction_dir):
+        os.makedirs(prediction_dir)
+    if not os.path.exists(ground_truth_dir):
+        os.makedirs(ground_truth_dir)
+    if not os.path.exists(ground_truth_mask_dir):
+        os.makedirs(ground_truth_mask_dir)
+    for i, data in enumerate(dataset, start=epoch_iter):
+        iter_start_time = time.time()
+        total_steps += opt.viton_batch_size
+        epoch_iter += opt.viton_batch_size
+        
+        real_image = data['image']
+        clothes = data['clothes']
+        t_mask = torch.FloatTensor((data['label'].cpu().numpy()==7).astype(np.float))
+        data['label'] = data['label']*(1-t_mask)+t_mask*4
+        edge = data['edge']
+        person_clothes_edge = torch.FloatTensor((data['label'].cpu().numpy()==4).astype(np.int))
+        pre_clothes_edge = torch.FloatTensor((edge.detach().cpu().numpy() > 0.5).astype(np.int64))
+        clothes = clothes * pre_clothes_edge
+        # edge = torch.FloatTensor((edge.detach().numpy() > 0.5).astype(np.int))
+        # clothes = clothes * edge        
+        person_clothes = real_image * person_clothes_edge
+        flow_out = warp_model(real_image.cuda(), clothes.cuda())
+        warped_cloth, last_flow, = flow_out
+        warped_edge = F.grid_sample(edge.cuda(), last_flow.permute(0, 2, 3, 1),
+                        mode='bilinear', padding_mode='zeros')
 
-    for epoch in range(1,2):
+        gen_inputs = torch.cat([real_image.cuda(), warped_cloth, warped_edge], 1)
+        gen_outputs = gen_model(gen_inputs)
+        p_rendered, m_composite = torch.split(gen_outputs, [3, 1], 1)
+        p_rendered = torch.tanh(p_rendered)
+        m_composite = torch.sigmoid(m_composite)
+        m_composite = m_composite * warped_edge
+        p_tryon = warped_cloth * m_composite + p_rendered * (1 - m_composite)
+        
+        
+        image_name = os.path.join(prediction_dir, data['im_name'][0])
+        ground_truth_image_name = os.path.join(ground_truth_dir, data['im_name'][0])
+        ground_truth_mask_name = os.path.join(ground_truth_mask_dir, data['im_name'][0])
+        if opt.VITON_Model == 'PF_Warp' or opt.VITON_Model == 'PB_Warp':
+            save_image(warped_cloth, image_name, normalize=True, value_range=(-1,1))
+            save_image(person_clothes, ground_truth_image_name, normalize=True, value_range=(-1,1))
+            save_image(person_clothes_edge, ground_truth_mask_name)
+        elif opt.VITON_Model == 'PF_Gen' or opt.VITON_Model == 'PB_Gen':
+            save_image(p_tryon, image_name, normalize=True, value_range=(-1,1))
+            save_image(real_image, ground_truth_image_name, normalize=True, value_range=(-1,1))
+            save_image(person_clothes_edge, ground_truth_mask_name)
+    
 
-        for i, data in enumerate(dataset, start=epoch_iter):
-            iter_start_time = time.time()
-            total_steps += opt.viton_batch_size
-            epoch_iter += opt.viton_batch_size
-
-            real_image = data['image']
-            clothes = data['clothes']
-            ##edge is extracted from the clothes image with the built-in function in python
-            edge = data['edge']
-            edge = torch.FloatTensor((edge.detach().numpy() > 0.5).astype(np.int))
-            clothes = clothes * edge        
-
-            flow_out = warp_model(real_image.cuda(), clothes.cuda())
-            warped_cloth, last_flow, = flow_out
-            warped_edge = F.grid_sample(edge.cuda(), last_flow.permute(0, 2, 3, 1),
-                            mode='bilinear', padding_mode='zeros')
-
-            gen_inputs = torch.cat([real_image.cuda(), warped_cloth, warped_edge], 1)
-            gen_outputs = gen_model(gen_inputs)
-            p_rendered, m_composite = torch.split(gen_outputs, [3, 1], 1)
-            p_rendered = torch.tanh(p_rendered)
-            m_composite = torch.sigmoid(m_composite)
-            m_composite = m_composite * warped_edge
-            p_tryon = warped_cloth * m_composite + p_rendered * (1 - m_composite)
-
-            if step % 1 == 0:
-                a = real_image.float().cuda()
-                b= clothes.cuda()
-                c = p_tryon
-                combine = torch.cat([a[0],b[0],c[0]], 2).squeeze()
-                cv_img=(combine.permute(1,2,0).detach().cpu().numpy()+1)/2
-                rgb=(cv_img*255).astype(np.uint8)
-                bgr=cv2.cvtColor(rgb,cv2.COLOR_RGB2BGR)
-                # cv2.imwrite(sub_path+'/'+str(step)+'.jpg',bgr)
-                cv2.imwrite(os.path.join(opt.results_dir, f"{step}.jpg"),bgr)
-
-            step += 1
-            if epoch_iter >= dataset_size:
-                break
 
 

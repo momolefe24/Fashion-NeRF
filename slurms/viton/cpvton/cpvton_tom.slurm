@@ -29,6 +29,7 @@ echo "Launching the script ${SLURM_JOB_NAME}"
 # export EXPERIMENT_FROM_NUMBER=0
 # export RUN_NUMBER=99
 # export RUN_FROM_NUMBER=0
+# export SEED=1
 # export DATASET_NAME=Rail
 # export TASK="GMM"
 # export DEBUG=1
@@ -51,4 +52,4 @@ echo "Dataset Name: $DATASET_NAME"
   --res low_res --dataset_name $DATASET_NAME  --run_wandb $WANDB \
   --low_res_dataset_name viton_plus \
   --niter 1 --niter_decay 1 --display_count 1 --print_step 1 --save_period 1 \
-  --viton_batch_size 4 --datamode $DATAMODE  --debug $DEBUG --sweeps $SWEEPS
+  --viton_batch_size 4 --datamode $DATAMODE  --debug $DEBUG --sweeps $SWEEPS --seed $SEED

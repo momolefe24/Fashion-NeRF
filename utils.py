@@ -1,17 +1,14 @@
-import sys
 import os
 import yaml
 import json
 import imageio
 import numpy as np
+import random
 import torch
 from NeRF.Vanilla_NeRF.load_blender import pose_spherical
-import pprint
-from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
 import cv2
 # --cuda False --name Rail_No_Occlusion -b 4 -j 2 --tocg_checkpoint checkpoints/Rail_RT_No_Occlusion_1/tocg_step_280000.pth
 import argparse
-
 
 """ WHEN YOU ARE CURRENTLY TRAINING
 NOTE: Experiment tracking spreadsheet helps identify what each experiment aims to achieve and their hyperparameters
@@ -30,6 +27,34 @@ experiment_from_run = "experiment_{experiment_from_number}/{run_from_number}"
 
 get_combination = lambda opt: "{opt.person}_.clothing}"
 
+
+
+def set_seed(seed: int):
+    """
+    Set the seed for reproducibility in PyTorch.
+
+    Parameters:
+    seed (int): The seed number.
+    """
+    # Set the seed for PyTorch
+    torch.manual_seed(seed)
+
+    # If you are using CUDA (GPU)
+    torch.cuda.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)  # if you are using multi-GPU.
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+
+    # Set the seed for NumPy
+    np.random.seed(seed)
+
+    # Set the seed for Python's `random` module
+    random.seed(seed)
+
+    # Set environment variables for further reproducibility (especially if using GPUs)
+    os.environ['PYTHONHASHSEED'] = str(seed)
+    os.environ['CUBLAS_WORKSPACE_CONFIG'] = ':16:8'  # or ':4096:8' for newer GPUs
+    
 def process_opt(opt):
     opt.rail_dir = opt.rail_dir.format(opt.dataset_name, opt.res, opt.datamode)
     opt.original_dir = opt.original_dir.format(opt.dataset_name, opt.res, opt.datamode)
@@ -59,7 +84,16 @@ def get_opt():
 
     return opt
 
-import argparse
+def get_vton_opt(root_opt):
+    yml_name =  f"yaml/{str(root_opt.VITON_Name).lower()}.yml"
+    with open(yml_name, 'r') as config_file:
+        config = yaml.safe_load(config_file)
+    return config
+
+def get_vton_sweep(root_opt):
+    with open(root_opt.sweeps_yaml, 'r') as config_file:
+        config = yaml.safe_load(config_file)
+    return config
 
 def parse_arguments():
     # Create the argument parser
@@ -73,6 +107,7 @@ def parse_arguments():
     """
     parser.add_argument('--debug', type=int,default=0, help='0=False, 1=True')
     parser.add_argument('--sweeps', type=int,default=0, help='0=False, 1=True')
+    parser.add_argument('--seed', type=int,default=0, help='3 Seeds for Experiment 1 and Run 1')
     parser.add_argument('--run_wandb',type=int, default=0, help='0=False, 1=True') 
     parser.add_argument('--experiment_number', type=int, default=1, help='The experiment number.')
     parser.add_argument('--run_number', type=int, default=1, help='The run number.')
@@ -373,9 +408,6 @@ def parse_arguments():
     help="Path to pretrained model or model identifier from huggingface.co/models.",
     )
 
-
-    parser.add_argument("--seed", type=int, default=1234, help="A seed for reproducible training.")
-
     parser.add_argument(
         "--train_batch_size", type=int, default=16, help=" Batch size (per device) for the training dataloader."
     )
@@ -577,3 +609,8 @@ def get_half_res(imgs, focal, H, W):
     imgs = imgs_half_res
     return imgs
 
+
+
+""" ================== NeRF imports =================="""
+# from NeRF.Vanilla_NeRF.test_helper import render, create_nerf, to8b
+# from NeRF.Vanilla_NeRF.run_nerf import train

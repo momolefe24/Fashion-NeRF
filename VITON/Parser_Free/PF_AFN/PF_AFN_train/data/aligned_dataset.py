@@ -2,6 +2,7 @@ import os.path
 from VITON.Parser_Free.PF_AFN.PF_AFN_train.data.base_dataset import BaseDataset, get_params, get_transform
 from VITON.Parser_Free.PF_AFN.PF_AFN_train.data.image_folder import make_dataset
 from PIL import Image
+from glob import glob
 import torch
 import json
 import numpy as np
@@ -44,8 +45,19 @@ class AlignedDataset(BaseDataset):
         dir_C = '_color'
         self.dir_C = os.path.join(self.data_path, opt.datamode + dir_C)
         self.C_paths = sorted(make_dataset(self.dir_C))
+    
+    def map_labels(self, image, mapping):
+        # Convert the image to a tensor with float type for processing
+        image_float = image.type(torch.float32)
 
+        # Apply the mappings
+        for src, dst in mapping.items():
+            image_float = torch.where(image == src, torch.tensor(dst, dtype=torch.float32), image_float)
 
+        # Convert back to the original data type
+        mapped_image = image_float.type(torch.uint8)
+        return mapped_image
+    
     def __getitem__(self, index):        
 
         A_path = self.A_paths[index]
@@ -164,7 +176,7 @@ class AlignedDataset(BaseDataset):
         return input_dict
 
     def __len__(self):
-        return len(self.A_paths) // self.opt.viton_batch_size * self.opt.viton_batch_size
+        return len(self.A_paths) 
 
     def name(self):
         return 'AlignedDataset'

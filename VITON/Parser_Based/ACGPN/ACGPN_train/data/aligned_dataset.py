@@ -242,7 +242,7 @@ class AlignedDataset(BaseDataset):
         return input_dict
 
     def __len__(self):
-        return len(self.A_paths) // self.opt.viton_batch_size * self.opt.viton_batch_size
+        return len(self.A_paths) 
 
     def name(self):
         return 'AlignedDataset'

@@ -346,7 +346,7 @@ def validate_batch(opt, root_opt, data,models,criterions,device,writer,loss_lrde
         try_on_unc_wandb = get_wandb_image(b[0], wandb=wandb)
         try_on_wandb = get_wandb_image(i[0], wandb=wandb)
         my_table.add_data(wandb.Image((rgb).astype(np.uint8)), real_image_wandb,clothing_image_wandb,warped_wandb, p_rendered_wandb, try_on_unc_wandb, try_on_wandb)
-        wandb.log({'val_loss_vgg':loss_vgg,'val_loss_l1':loss_l1,'val_loss_vgg_skin':loss_vgg_skin,'val_loss_l1_skin':loss_l1_skin,'val_loss_mask_l1':loss_mask_l1,'val_loss_vgg':loss_vgg,'val_loss_warp':loss_warp,'val_loss_smooth':loss_smooth,'val_loss_all': loss_all,'Val_Table':my_table })
+        wandb.log({'val_loss_vgg':loss_vgg,'val_loss_l1':loss_l1,'val_loss_vgg_skin':loss_vgg_skin,'val_loss_l1_skin':loss_l1_skin,'val_loss_mask_l1':loss_mask_l1,'val_loss_vgg':loss_vgg,'val_warping_loss':loss_warp,'val_loss_smooth':loss_smooth,'val_l1_composition_loss': loss_all,'Val_Table':my_table })
     for j in range(len(data['p_name'])):
         p_name = data['p_name'][j]
 
@@ -710,7 +710,7 @@ def train_batch(
             try_on_unc_wandb = get_wandb_image(b[0], wandb=wandb)
             try_on_wandb = get_wandb_image(i[0], wandb=wandb)
             my_table.add_data(wandb.Image((rgb).astype(np.uint8)), real_image_wandb,clothing_image_wandb,warped_wandb, p_rendered_wandb, try_on_unc_wandb, try_on_wandb)
-            wandb.log({'loss_vgg':loss_vgg,'loss_l1':loss_l1,'loss_vgg_skin':loss_vgg_skin,'loss_l1_skin':loss_l1_skin,'loss_mask_l1':loss_mask_l1,'loss_vgg':loss_vgg,'loss_warp':loss_warp,'loss_smooth':loss_smooth,'loss_all': loss_all,'Table':my_table })
+            wandb.log({'loss_vgg':loss_vgg,'l1_composition_loss':loss_l1,'loss_vgg_skin':loss_vgg_skin,'loss_l1_skin':loss_l1_skin,'loss_mask_l1':loss_mask_l1,'vgg_composition_loss':loss_vgg,'warping_loss':loss_warp,'loss_smooth':loss_smooth,'composition_loss': loss_all,'Table':my_table })
     
         bgr = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
         if not os.path.exists(opt.results_dir):
@@ -930,12 +930,12 @@ def _train_pf_e2e_():
         val_warp_loss /= len(validation_loader)
         val_gen_loss /= len(validation_loader)
         val_loss /= len(validation_loader)
-        writer.add_scalar('train_warp_loss', train_warp_loss, epoch)
+        writer.add_scalar('train_warping_loss', train_warp_loss, epoch)
         writer.add_scalar('train_gen_loss', train_gen_loss, epoch)
-        writer.add_scalar('train_loss', train_loss, epoch)
-        writer.add_scalar('val_warp_loss', val_warp_loss, epoch)
+        writer.add_scalar('train_composition_loss', train_loss, epoch)
+        writer.add_scalar('val_warping_loss', val_warp_loss, epoch)
         writer.add_scalar('val_gen_loss', val_gen_loss, epoch)
-        writer.add_scalar('val_loss', val_loss, epoch)
+        writer.add_scalar('val_composition_loss', val_loss, epoch)
         # Save model
         warp_ckpt = {
             'epoch': epoch,

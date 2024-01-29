@@ -583,7 +583,7 @@ def train_batch(
             warped_wandb = get_wandb_image(g[0], wandb=wandb)
             try_on_wandb = get_wandb_image(b[0], wandb=wandb)
             my_table.add_data(wandb.Image((rgb).astype(np.uint8)), real_image_wandb,clothing_image_wandb,warped_wandb, try_on_wandb)
-            wandb.log({'loss_smooth':loss_smooth,'loss_vgg':loss_vgg,'loss_l1':loss_l1,'warping_loss': loss_all,'Table':my_table })
+            wandb.log({'loss_smooth':loss_smooth,'loss_vgg':loss_vgg,'l1_cloth':loss_l1,'warping_loss': loss_all,'Table':my_table })
         bgr = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
         if not os.path.exists(opt.results_dir):
             os.makedirs(opt.results_dir)

@@ -88,6 +88,7 @@ def copy_root_opt_to_opt(parser, root_opt):
     parser.load_last_step = root_opt.load_last_step if type(root_opt.load_last_step) == bool else eval(root_opt.load_last_step)
     parser.run_wandb = root_opt.run_wandb
     parser.viton_batch_size = root_opt.viton_batch_size
+    parser.seed = root_opt.seed
     parser.val_count = root_opt.val_count
     parser.save_period = root_opt.save_period
     parser.print_step = root_opt.print_step

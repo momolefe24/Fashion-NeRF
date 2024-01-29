@@ -84,6 +84,7 @@ def copy_root_opt_to_opt(parser, root_opt):
     parser.run_wandb = root_opt.run_wandb
     parser.viton_batch_size = root_opt.viton_batch_size
     parser.save_period = root_opt.save_period
+    parser.seed = root_opt.seed
     parser.print_step = root_opt.print_step
     parser.val_count = root_opt.val_count
     parser.niter = root_opt.niter
