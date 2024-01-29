@@ -55,6 +55,8 @@ class LoadVITONDataset(Dataset):
     def get_clothing(self, im_name):
         base_name = '_'.join(im_name.split('_')[:-1])
         base_name = f'{base_name}.jpg'
+        if self.root_opt.datamode == 'test':
+            base_name = base_name.replace('test_img','test_color')
         corresponding_index = self.cloth_names.index(base_name)
         return self.cloth_names[corresponding_index]
 
@@ -71,8 +73,12 @@ class LoadVITONDataset(Dataset):
                 # Clothing edge
             cloth_edge = Image.open(os.path.join(self.dataroot,f'{self.phase}_edge', c_name)).convert('L')
         else:
-            im_name, c_name, edge_name = self.img_names[index], self.cloth_names[0], self.edge_names[0]
-
+            if self.root_opt.dataset_name == 'Rail':
+                im_name  = self.img_names[index]
+                c_name = self.get_clothing(self.img_names[index])
+            else:
+                im_name, c_name = self.img_names[index], self.cloth_names[index]
+            edge_name = c_name.replace('color','edge')
             # Person image
             img = Image.open(im_name).convert('RGB')
             cloth = Image.open(c_name).convert('RGB')
@@ -92,8 +98,9 @@ class LoadVITONDataset(Dataset):
         # cloth_edge = cloth_edge.resize((self.width, self.height))
         cloth_edge_tensor = self.transform_parse(cloth_edge)  # [-1,1]
 
+        
+        # Unpaired clothing image
         if self.phase == 'train':
-            # Unpaired clothing image
             other_clothes = self.unique_clothes.copy()
             other_clothes.remove(c_name)  # remove the original cloth
             if len(other_clothes) > 0:
@@ -115,53 +122,53 @@ class LoadVITONDataset(Dataset):
             # un_cloth_edge = un_cloth_edge.resize((self.width, self.height))
             un_cloth_edge_tensor = self.transform_parse(un_cloth_edge)  # [-1,1]
 
-            # Parse map
-            parse_path1 = os.path.join(self.dataroot,f'{self.phase}_label', f'{Path(im_name).stem}.jpg')
-            parse_path2 = os.path.join(self.dataroot,f'{self.phase}_label', f'{Path(im_name).stem}.png')
-            parse_path = parse_path1 if os.path.isfile(parse_path1) else parse_path2
-            parse = Image.open(parse_path).convert('L')
-            # parse = parse.resize((self.width, self.height), Image.NEAREST)
-            parse_tensor = self.transform_parse(parse) * 255.0
+        # Parse map
+        parse_path1 = os.path.join(self.dataroot,f'{self.phase}_label', f'{Path(im_name).stem}.jpg')
+        parse_path2 = os.path.join(self.dataroot,f'{self.phase}_label', f'{Path(im_name).stem}.png')
+        parse_path = parse_path1 if os.path.isfile(parse_path1) else parse_path2
+        parse = Image.open(parse_path).convert('L')
+        # parse = parse.resize((self.width, self.height), Image.NEAREST)
+        parse_tensor = self.transform_parse(parse) * 255.0
 
-            # Pose: 18 keypoints [x0, y0, z0, x1, y1, z1, ...]
-            with open(
-                # Path(self.dataroot) / f'{self.phase}_pose' / f'{Path(im_name).stem}.json'
-                os.path.join(self.dataroot,f'{self.phase}_pose', f'{Path(im_name).stem}.json')
-            ) as f:
-                pose_label = json.load(f)
-                try:
-                    pose_data = pose_label['people'][0]['pose_keypoints']
-                except IndexError:
-                    pose_data = [0 for i in range(54)]
-                pose_data = np.array(pose_data)
-                pose_data = pose_data.reshape((-1, 3))[:18]
+        # Pose: 18 keypoints [x0, y0, z0, x1, y1, z1, ...]
+        with open(
+            # Path(self.dataroot) / f'{self.phase}_pose' / f'{Path(im_name).stem}.json'
+            os.path.join(self.dataroot,f'{self.phase}_pose', f'{Path(im_name).stem}.json')
+        ) as f:
+            pose_label = json.load(f)
+            try:
+                pose_data = pose_label['people'][0]['pose_keypoints']
+            except IndexError:
+                pose_data = [0 for i in range(54)]
+            pose_data = np.array(pose_data)
+            pose_data = pose_data.reshape((-1, 3))[:18]
 
-            point_num = pose_data.shape[0]
-            pose_tensor = torch.zeros(point_num, self.height, self.width)
-            r = self.radius
-            im_pose = Image.new('L', (self.width, self.height))
-            pose_draw = ImageDraw.Draw(im_pose)
-            for i in range(point_num):
-                one_map = Image.new('L', (self.width, self.height))
-                draw = ImageDraw.Draw(one_map)
-                pointx = pose_data[i, 0]
-                pointy = pose_data[i, 1]
-                if pointx > 1 and pointy > 1:
-                    draw.rectangle(
-                        (pointx - r, pointy - r, pointx + r, pointy + r), 'white', 'white'
-                    )
-                    pose_draw.rectangle(
-                        (pointx - r, pointy - r, pointx + r, pointy + r), 'white', 'white'
-                    )
-                one_map = self.transform_image(one_map.convert('RGB'))
-                pose_tensor[i] = one_map[0]
+        point_num = pose_data.shape[0]
+        pose_tensor = torch.zeros(point_num, self.height, self.width)
+        r = self.radius
+        im_pose = Image.new('L', (self.width, self.height))
+        pose_draw = ImageDraw.Draw(im_pose)
+        for i in range(point_num):
+            one_map = Image.new('L', (self.width, self.height))
+            draw = ImageDraw.Draw(one_map)
+            pointx = pose_data[i, 0]
+            pointy = pose_data[i, 1]
+            if pointx > 1 and pointy > 1:
+                draw.rectangle(
+                    (pointx - r, pointy - r, pointx + r, pointy + r), 'white', 'white'
+                )
+                pose_draw.rectangle(
+                    (pointx - r, pointy - r, pointx + r, pointy + r), 'white', 'white'
+                )
+            one_map = self.transform_image(one_map.convert('RGB'))
+            pose_tensor[i] = one_map[0]
 
-            # Densepose
-            dense_mask = np.load(
-                # Path(self.dataroot) / f'{self.phase}_densepose' / f'{Path(im_name).stem}.npy'
-                os.path.join(self.dataroot, f'{self.phase}_densepose', f'{Path(im_name).stem}.npy')
-            ).astype(np.float32)
-            dense_tensor = self.transform_parse(dense_mask)
+        # Densepose
+        dense_mask = np.load(
+            # Path(self.dataroot) / f'{self.phase}_densepose' / f'{Path(im_name).stem}.npy'
+            os.path.join(self.dataroot, f'{self.phase}_densepose', f'{Path(im_name).stem}.npy')
+        ).astype(np.float32)
+        dense_tensor = self.transform_parse(dense_mask)
 
         if self.phase == 'train':
             return {
@@ -180,11 +187,13 @@ class LoadVITONDataset(Dataset):
             }
         else:
             return {
+                'img_name': im_name,
                 'image': img_tensor,
                 'color': cloth_tensor,
                 'edge': cloth_edge_tensor,
                 'p_name': im_name,
                 'c_name': c_name,
+                'label': parse_tensor,
             }
 
     def __len__(self) -> int:

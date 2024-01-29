@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH -N 1
 #SBATCH -t 72:00:00
-#SBATCH --exclude=mscluster68,mscluster48,mscluster82
+#SBATCH --exclude=mscluster68,mscluster48,mscluster82,mscluster61
 #SBATCH --ntasks=1
 #SBATCH --partition=bigbatch
 
@@ -25,12 +25,14 @@ echo "Launching the script ${SLURM_JOB_NAME}"
 # ./scripts/viton/viton.sh $SLURM_JOB_NAME {experiment_number}  {run_number} {experiment_from}  {run_number_from}
 # ./scripts/viton/viton.sh $SLURM_JOB_NAME 1 6 1 6
 
+
 export EXPERIMENT_NUMBER=1
 export EXPERIMENT_FROM_NUMBER=0
 export RUN_NUMBER=99
 export RUN_FROM_NUMBER=0
+export SEED=1
 export DATASET_NAME=Rail
-export TASK="PF_Warp"
+export TASK="PB_Warp"
 export DEBUG=1
 export SWEEPS=0
 export DATAMODE=train
@@ -38,33 +40,23 @@ export WANDB=0
 export DEVICE=0
 export VITON_NAME=DM_VTON
 
-
 echo "Start Debug: $DEBUG"
 echo "Experiment Number: $EXPERIMENT_NUMBER"
 echo "Run Number: $RUN_NUMBER"
 echo "Dataset Name: $DATASET_NAME"
 
 
-
 # parser_based_warp_experiment_from_number 1 - Original
 # parser_based_warp_experiment_from_number 2 - Rail
 
-# parser_based_gen_experiment_from_number 3 - Original
-# parser_based_gen_experiment_from_number 4 - Rail
-
-# parser_free_warp_experiment_from_number 15 - Original
-# parser_free_warp_experiment_from_number 16 - Rail
 
 
 
-# Parser Free Warp
+# Parser_Based Warping
 ./scripts/viton/viton.sh --job_name $VITON_NAME --task $TASK --experiment_number $EXPERIMENT_NUMBER --run_number $RUN_NUMBER \
-    --experiment_from_number 0 --run_from_number 0 \
-    --parser_based_warp_experiment_from_number 0 --parser_based_warp_run_from_number 0 --warp_load_from_model Original \
-    --parser_based_gen_experiment_from_number 0 --parser_based_gen_run_from_number 0 --gen_load_from_model Original \
-    --parser_free_warp_experiment_from_number 0 --parser_free_warp_run_from_number 0 --parser_free_warp_load_from_model Original \
-    --dataset_name $DATASET_NAME --device $DEVICE --load_last_step False --run_wandb $WANDB \
-    --niter 1 --niter_decay 1 --display_count 1 --print_step 1 --save_period 1 --val_count 1 \
-    --viton_batch_size 4 --datamode $DATAMODE --debug $DEBUG --sweeps $SWEEPS
+    --experiment_from_number 0 \
+    --run_from_number 0 \
+    --warp_load_from_model Original --dataset_name $DATASET_NAME --device $DEVICE --load_last_step False --run_wandb $WANDB \
+    --niter 1 --niter_decay 1000 --display_count 1000 --print_step 100 --save_period 100 --val_count 100 \
+    --viton_batch_size 8 --datamode $DATAMODE --debug $DEBUG --sweeps $SWEEPS --seed $SEED
 
-# --niter 1000 --niter_decay 1000 --display_count 10 --print_step 10 --save_period 10 --val_count 100 \

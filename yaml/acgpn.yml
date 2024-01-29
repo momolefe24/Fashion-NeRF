@@ -48,7 +48,8 @@ phase: 'test'
 # ========================= Directory
 rail_dir: "data/VITON/{}/processed/{}/{}"
 original_dir: "data/VITON/{}/processed/{}/{}"
-root_dir: "/home-mscluster/mmolefe/Playground/Synthesising Virtual Fashion Try-On with Neural Radiance Fields/Fashion-SuperNeRF"
+#root_dir: "/home-mscluster/mmolefe/Playground/Synthesising Virtual Fashion Try-On with Neural Radiance Fields/Fashion-SuperNeRF"
+root_dir: '/mnt/data/home/molefe/Playground/Synthesising Virtual Fashion Try-On with Neural Radiance Fields/Fashion-NeRF'
 checkpoint_root_dir: "/gluster/mmolefe"
 dataset_root_dir: "/datasets/mmolefe"
 tensorboard_dir: "./tensorboard/{}/{}"
@@ -221,7 +222,8 @@ load_pretrain: '/checkpoints/label2city'
 which_epoch: 'latest'
 verbose: false
 continue_train: false
-
+segment_anything: False
+seed: 1
 # ===================== Logging Hyperparameters
 display_count: 1 # Frequency Of Saving Training Results As Images & Graphs
 print_step: 1 # Frequency Of Print Training Results On Screen'

@@ -19,6 +19,7 @@ class CPDataset(data.Dataset):
         super(CPDataset, self).__init__()
         # base setting
         self.root_opt = root_opt
+        self.opt = opt 
         self.root_dir = root_opt.root_dir
         if root_opt.dataset_name == "Rail":
             self.read_data_dir = osp.join(self.root_dir, root_opt.rail_dir)
@@ -71,8 +72,8 @@ class CPDataset(data.Dataset):
             c_name = f"{clothing_name}.jpg"
             c_path= osp.join(self.read_data_dir, 'train_color', c_name) if self.datamode == 'train' else osp.join(self.read_data_dir, 'test_color', c_name)
             cmask_path= osp.join(self.read_data_dir, 'train_edge', c_name) if self.datamode == 'train' else osp.join(self.read_data_dir, 'test_edge', c_name)
-            image_path = osp.join(self.read_data_dir, 'train_img', im_name) if self.datamode == 'train' else osp.join(self.read_data_dir, 'test_img', c_name)
-            parse_path = osp.join(self.read_data_dir, 'train_label', parse_name) if self.datamode == 'train' else osp.join(self.read_data_dir, 'test_label', c_name)
+            image_path = osp.join(self.read_data_dir, 'train_img', im_name) if self.datamode == 'train' else osp.join(self.read_data_dir, 'test_img', im_name)
+            parse_path = osp.join(self.read_data_dir, 'train_label', parse_name) if self.datamode == 'train' else osp.join(self.read_data_dir, 'test_label', parse_name)
         else:
             c_name = self.c_names[index]
             c_path= osp.join(self.read_data_dir, 'cloth', c_name)
@@ -128,7 +129,8 @@ class CPDataset(data.Dataset):
         else:    
             pose_name = im_name.replace('.jpg', '.json')
             pose_path = osp.join(self.read_data_dir, 'train_pose', pose_name)
-        
+        if self.opt.datamode == 'test':
+           pose_path = pose_path.replace('train','test') 
         with open(pose_path, 'r') as f:
             pose_label = json.load(f)
             pose_data = pose_label['people'][0]['pose_keypoints']
@@ -206,7 +208,23 @@ class CPDataLoader(object):
             batch = self.data_iter.__next__()
 
         return batch
+class CPDataTestLoader(object):
+    def __init__(self, opt, dataset):
+        super(CPDataTestLoader, self).__init__()
 
+        self.data_loader = torch.utils.data.DataLoader(
+                dataset, batch_size=1)
+        self.dataset = dataset
+        self.data_iter = self.data_loader.__iter__()
+       
+    def next_batch(self):
+        try:
+            batch = self.data_iter.__next__()
+        except StopIteration:
+            self.data_iter = self.data_loader.__iter__()
+            batch = self.data_iter.__next__()
+
+        return batch
 
 if __name__ == "__main__":
     print("Check the dataset for geometric matching module!")

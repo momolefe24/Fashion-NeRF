@@ -47,9 +47,34 @@ class CustomDatasetDataLoader(BaseDataLoader):
     def __len__(self):
         return len(self.dataset)
 
+class CustomDatasetTestDataLoader(BaseDataLoader):
+    def name(self):
+        return 'CustomDatasetTestDataLoader'
+
+    def initialize(self, opt, root_opt):
+        BaseDataLoader.initialize(self, opt)
+        self.dataset = CreateDataset(opt, root_opt)
+        self.dataset.__getitem__(0)
+        self.dataloader = torch.utils.data.DataLoader(
+            self.dataset,
+            batch_size=1,
+            shuffle = False,
+            num_workers=1)
+
+    def load_data(self):
+        return self.dataloader
+
+    def __len__(self):
+        return len(self.dataset)
 
 def CreateDataLoader(opt, root_opt):
     data_loader = CustomDatasetDataLoader()
+    print(data_loader.name())
+    data_loader.initialize(opt, root_opt)
+    return data_loader
+
+def CreateDataTestLoader(opt, root_opt):
+    data_loader = CustomDatasetTestDataLoader()
     print(data_loader.name())
     data_loader.initialize(opt, root_opt)
     return data_loader
@@ -80,11 +105,55 @@ class AlignedDataset(BaseDataset):
         self.E_paths = sorted(make_dataset(self.dir_E))
         self.dataset_size = len(self.I_paths)
         
+        dir_A = '_A' if self.opt.label_nc == 0 else '_label'
+        self.dir_A = os.path.join(self.data_path, opt.datamode + dir_A)
+        self.A_paths = sorted(make_dataset(self.dir_A))
+        
+        
+        self.get_clothing_name = lambda path_to_image:"_".join(path_to_image.split("/")[-1].split("_")[:-1])
+        
     def __getitem__(self, index):
         if self.opt.dataset_name == "Rail":
             file_path ='demo.txt'
-            im_name, c_name = linecache.getline(file_path, index+1).strip().split()
+            im_name  = self.I_paths[index].split("/")[-1]
+            c_name = f"{self.get_clothing_name(im_name)}.jpg"
+            # c_name = self.get_clothing(self.img_names[index])
 
+            A_path = self.A_paths[index]
+            A = Image.open(A_path).convert('L')
+
+            params = get_params(self.opt, A.size)
+            if self.opt.label_nc == 0:
+                transform_A = get_transform(self.opt, params)
+                A_tensor = transform_A(A.convert('RGB'))
+            else:
+                transform_A = get_transform(self.opt, params, method=Image.NEAREST, normalize=False)
+                A_tensor = transform_A(A) * 255.0
+            if self.opt.dataset_name == 'Rail':
+                mapping = {# VITON: ACGPN
+                        0: 0, # background
+                        10: 0, # background
+                        1:1, # hair
+                        2:1, # hair
+                        4:12, # face
+                        13: 12, # face
+                        5:4, # upper body
+                        6:4, # upper body
+                        7:4, # upper body
+                        9:8, # bottom
+                        12:8, # bottom 
+                        14:11, # left arm
+                        15:13, # right arm
+                        16: 9, # left leg
+                        17: 10, # righttleg
+                        18: 5, # left shoe
+                        19: 6, # right shoe
+                        3: 7, # noise,
+                        11: 7, # noise,
+                        8: 0, # scoks
+                        }
+                A_tensor = self.map_labels(A_tensor, mapping)
+            
             I_path = os.path.join(self.dir_I,im_name)
             I = Image.open(I_path).convert('RGB')
 
@@ -102,7 +171,7 @@ class AlignedDataset(BaseDataset):
             E = Image.open(E_path).convert('L')
             E_tensor = transform_E(E)
 
-            input_dict = { 'image': I_tensor,'clothes': C_tensor, 'edge': E_tensor}
+            input_dict = { 'im_name':im_name,'image': I_tensor,'label': A_tensor,'clothes': C_tensor, 'edge': E_tensor}
             return input_dict
         else:
             im_name, c_name, e_name = self.I_paths[index], self.C_paths[index], self.E_paths[index]
@@ -125,6 +194,18 @@ class AlignedDataset(BaseDataset):
 
     def __len__(self):
         return self.dataset_size
+    
+    
+    def map_labels(self, image, mapping):
+        # Convert the image to a tensor with float type for processing
+        image_float = image.type(torch.float32)
 
+        # Apply the mappings
+        for src, dst in mapping.items():
+            image_float = torch.where(image == src, torch.tensor(dst, dtype=torch.float32), image_float)
+
+        # Convert back to the original data type
+        mapped_image = image_float.type(torch.uint8)
+        return mapped_image
     def name(self):
         return 'AlignedDataset'

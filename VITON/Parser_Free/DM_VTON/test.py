@@ -5,10 +5,11 @@ import os
 import cupy
 import torch
 import torchvision as tv
+from torchvision.utils import make_grid, save_image
 from thop import profile as ops_profile
 from torch.utils.data import DataLoader
 from tqdm import tqdm
-
+import numpy as np
 from VITON.Parser_Free.DM_VTON.dataloader.viton_dataset import LoadVITONDataset
 from VITON.Parser_Free.DM_VTON.pipelines import DMVTONPipeline
 from VITON.Parser_Free.DM_VTON.utils.general import Profile, print_log, warm_up
@@ -16,7 +17,7 @@ from VITON.Parser_Free.DM_VTON.utils.metrics import calculate_fid_given_paths, c
 from VITON.Parser_Free.DM_VTON.utils.torch_utils import select_device
 fix = lambda path: os.path.normpath(path)
 def run_test_pf(
-    pipeline, data_loader, device, img_dir, save_dir, log_path, save_img=True
+    opt, root_opt, pipeline, data_loader, device, img_dir, save_dir, log_path, save_img=True
 ):
     metrics = {}
 
@@ -26,15 +27,23 @@ def run_test_pf(
     os.makedirs(visualize_dir, exist_ok=True)
     os.makedirs(tryon_dir, exist_ok=True)
 
-
+    prediction_dir = os.path.join(opt.results_dir, 'prediction')
+    ground_truth_dir = os.path.join(opt.results_dir, 'ground_truth')
+    ground_truth_mask_dir = os.path.join(opt.results_dir, 'ground_truth_mask')
+    if not os.path.exists(prediction_dir):
+        os.makedirs(prediction_dir)
+    if not os.path.exists(ground_truth_dir):
+        os.makedirs(ground_truth_dir)
+    if not os.path.exists(ground_truth_mask_dir):
+        os.makedirs(ground_truth_mask_dir)
     # Warm-up gpu
-    dummy_input = {
-        'person': torch.randn(1, 3, 256, 192).to(device),
-        'clothes': torch.randn(1, 3, 256, 192).to(device),
-        'clothes_edge': torch.randn(1, 1, 256, 192).to(device),
-    }
-    with cupy.cuda.Device(int(device.split(':')[-1])):
-        warm_up(pipeline, **dummy_input)
+    # dummy_input = {
+    #     'person': torch.randn(1, 3, 256, 192).to(device),
+    #     'clothes': torch.randn(1, 3, 256, 192).to(device),
+    #     'clothes_edge': torch.randn(1, 1, 256, 192).to(device),
+    # }
+    # with cupy.cuda.Device(int(device.split(':')[-1])):
+    #     warm_up(pipeline, **dummy_input)
 
     with torch.no_grad():
         seen, dt = 0, Profile(device=device)
@@ -44,74 +53,48 @@ def run_test_pf(
             real_image = data['image'].to(device)
             clothes = data['color'].to(device)
             edge = data['edge'].to(device)
-
+            pre_clothes_edge = torch.FloatTensor((edge.detach().cpu().numpy() > 0.5).astype(np.int64)).to(device)
+            clothes = clothes * pre_clothes_edge
+            person_clothes_edge = person_clothes_edge.to(device)
+            person_clothes = real_image * person_clothes_edge
             with cupy.cuda.Device(int(device.split(':')[-1])):
                 with dt:
                     p_tryon, warped_cloth = pipeline(real_image, clothes, edge, phase="test")
 
             seen += len(p_tryon)
-
+            image_name = os.path.join(prediction_dir, data['img_name'][0])
+            ground_truth_image_name = os.path.join(ground_truth_dir, data['img_name'][0])
+            ground_truth_mask_name = os.path.join(ground_truth_mask_dir, data['img_name'][0])
+            if opt.VITON_Model == 'PF_Warp' or opt.VITON_Model == 'PB_Warp':
+                save_image(warped_cloth, image_name, normalize=True, value_range=(-1,1))
+                save_image(person_clothes, ground_truth_image_name, normalize=True, value_range=(-1,1))
+                save_image(person_clothes_edge, ground_truth_mask_name)
+            elif opt.VITON_Model == 'PF_Gen' or opt.VITON_Model == 'PB_Gen':
+                save_image(p_tryon, image_name, normalize=True, value_range=(-1,1))
+                save_image(real_image, ground_truth_image_name, normalize=True, value_range=(-1,1))
+                save_image(person_clothes_edge, ground_truth_mask_name)
             # Save images
-            for j in range(len(data['p_name'])):
-                p_name = data['p_name'][j]
+            # for j in range(len(data['p_name'])):
+            #     p_name = data['p_name'][j]
 
-                tv.utils.save_image(
-                    p_tryon[j],
-                    os.path.join(tryon_dir, p_name),
-                    nrow=int(1),
-                    normalize=True,
-                    value_range=(-1, 1),
-                )
+            #     tv.utils.save_image(
+            #         p_tryon[j],
+            #         os.path.join(tryon_dir, p_name),
+            #         nrow=int(1),
+            #         normalize=True,
+            #         value_range=(-1, 1),
+            #     )
 
-                combine = torch.cat(
-                    [real_image[j].float(), clothes[j], warped_cloth[j], p_tryon[j]], -1
-                ).squeeze()
-                tv.utils.save_image(
-                    combine,
-                    os.path.join(visualize_dir,p_name),
-                    nrow=int(1),
-                    normalize=True,
-                    value_range=(-1, 1),
-                )
-
-    fid = calculate_fid_given_paths(
-        paths=[str(img_dir), str(tryon_dir)],
-        batch_size=50,
-        device=device,
-    )
-    lpips = calculate_lpips_given_paths(paths=[str(img_dir), str(tryon_dir)], device=device)
-
-    # FID
-    metrics['fid'] = fid
-    metrics['lpips'] = lpips
-
-    # Speed
-    t = dt.t / seen * 1e3  # speeds per image
-    metrics['fps'] = 1000 / t
-    print_log(
-        log_path,
-        f'Speed: %.1fms per image {real_image.size()}'
-        % t,
-    )
-
-    # Memory
-    mem_params = sum([param.nelement()*param.element_size() for param in pipeline.parameters()])
-    mem_bufs = sum([buf.nelement()*buf.element_size() for buf in pipeline.buffers()])
-    metrics['mem'] = mem_params + mem_bufs # in bytes
-
-    ops, params = ops_profile(pipeline, (*dummy_input.values(), ), verbose=False)
-    metrics['ops'] = ops
-    metrics['params'] = params
-
-    # Log
-    metrics_str = 'Metric, {}'.format(', '.join([f'{k}: {v}' for k, v in metrics.items()]))
-    print_log(log_path, metrics_str)
-
-    # Remove results if not save
-    if not save_img:
-        shutil.rmtree(result_dir)
-    else:
-        print_log(log_path, f'Results are saved at {result_dir}')
+            #     combine = torch.cat(
+            #         [real_image[j].float(), clothes[j], warped_cloth[j], p_tryon[j]], -1
+            #     ).squeeze()
+            #     tv.utils.save_image(
+            #         combine,
+            #         os.path.join(visualize_dir,p_name),
+            #         nrow=int(1),
+            #         normalize=True,
+            #         value_range=(-1, 1),
+            #     )
 
     return metrics
 
@@ -310,10 +293,10 @@ def _test_dm_vton_(opt, root_opt):
     test_data = LoadVITONDataset(root_opt, path=dataset_dir, phase='test', size=(256, 192))
     test_data.__getitem__(0)
     data_loader = DataLoader(
-        test_data, batch_size=opt.viton_batch_size, shuffle=False, num_workers=root_opt.workers
+        test_data, batch_size=1, shuffle=False, num_workers=root_opt.workers
     )
     img_dir = os.path.join(root_opt.root_dir, root_opt.original_dir, 'test_img')
-    run_test_pf(
+    run_test_pf(opt,root_opt,
         pipeline=pipeline,
         data_loader=data_loader,
         device=device,

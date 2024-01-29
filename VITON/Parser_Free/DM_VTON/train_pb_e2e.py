@@ -238,7 +238,7 @@ def train_batch(
             preserve_wandb = get_wandb_image(g[0], wandb=wandb)
             try_on_wandb = get_wandb_image(k[0], wandb=wandb)
             my_table.add_data(wandb.Image((rgb).astype(np.uint8)), real_image_wandb,clothing_image_wandb,warped_wandb, preserve_wandb, try_on_wandb)
-            wandb.log({'loss_warp':loss_warp,'loss_l1':loss_l1,'loss_vgg':loss_vgg, 'loss_gen':loss_gen,'loss_all': loss_all,'Table':my_table })
+            wandb.log({'warping_loss':loss_warp,'l1_cloth':loss_l1,'loss_vgg':loss_vgg, 'loss_gen':loss_gen,'composition_loss': loss_all,'Table':my_table })
         bgr = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
         if not os.path.exists(opt.results_dir):
             os.makedirs(opt.results_dir)
@@ -435,7 +435,7 @@ def validate_batch(opt, root_opt,data,models,criterions,device,writer,global_ste
         preserve_wandb = get_wandb_image(g[0], wandb=wandb)
         try_on_wandb = get_wandb_image(k[0], wandb=wandb)
         my_table.add_data(wandb.Image((rgb).astype(np.uint8)), real_image_wandb,clothing_image_wandb,warped_wandb, preserve_wandb, try_on_wandb)
-        wandb.log({'val_loss_warp':loss_warp,'val_loss_l1':loss_l1,'val_loss_vgg':loss_vgg, 'val_loss_gen':loss_gen,'val_loss_all': loss_all,'Val_Table':my_table })
+        wandb.log({'val_warping_loss':loss_warp,'val_l1_cloth':loss_l1,'val_loss_vgg':loss_vgg, 'val_loss_gen':loss_gen,'val_composition_loss': loss_all,'Val_Table':my_table })
     bgr = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
     if not os.path.exists(os.path.join(opt.results_dir, 'val')):
         os.makedirs(os.path.join(opt.results_dir, 'val'))
@@ -619,15 +619,15 @@ def train_pb_e2e():
         val_gen_loss /= len(validation_loader)
         val_loss /= len(validation_loader)
         
-        writer.add_scalar('train_warp_loss', train_warp_loss, epoch)
+        writer.add_scalar('train_warping_loss', train_warp_loss, epoch)
         writer.add_scalar('train_gen_loss', train_gen_loss, epoch)
-        writer.add_scalar('train_loss', train_loss, epoch)
-        writer.add_scalar('val_warp_loss', val_warp_loss, epoch)
+        writer.add_scalar('train_composition_loss', train_loss, epoch)
+        writer.add_scalar('val_warping_loss', val_warp_loss, epoch)
         writer.add_scalar('val_gen_loss', val_gen_loss, epoch)
         writer.add_scalar('val_loss', val_loss, epoch)
         if wandb is not None:
-            wandb.log({'train_warp_loss':train_warp_loss,'train_gen_loss':train_gen_loss,'train_loss':train_loss,
-                       'val_warp_loss':val_warp_loss, 'val_gen_loss':val_gen_loss,'val_loss':val_loss
+            wandb.log({'train_warping_loss':train_warp_loss,'train_gen_loss':train_gen_loss,'train_composition_loss':train_loss,
+                       'val_warping_loss':val_warp_loss, 'val_gen_loss':val_gen_loss,'val_composition_loss':val_loss
                        })
 
         # Save model

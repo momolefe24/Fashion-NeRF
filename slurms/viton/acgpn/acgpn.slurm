@@ -26,18 +26,19 @@ echo "Launching the script ${SLURM_JOB_NAME}"
 # ./scripts/viton/viton.sh $SLURM_JOB_NAME 1 6 1 6
 
 
-# export EXPERIMENT_NUMBER=5
-# export EXPERIMENT_FROM_NUMBER=0
-# export RUN_NUMBER=1
-# export RUN_FROM_NUMBER=0
-# export DATASET_NAME=Rail
-# export TASK=""
-# export DEBUG=1
-# export SWEEPS=1
-# export DATAMODE=train
-# export WANDB=1
-# export DEVICE=0
-# export VITON_NAME=ACGPN
+export EXPERIMENT_NUMBER=5
+export EXPERIMENT_FROM_NUMBER=0
+export RUN_NUMBER=1
+export RUN_FROM_NUMBER=0
+export SEED=1
+export DATASET_NAME=Rail
+export TASK=""
+export DEBUG=1
+export SWEEPS=1
+export DATAMODE=train
+export WANDB=1
+export DEVICE=0
+export VITON_NAME=ACGPN
 
 
 echo "Start Debug: $DEBUG"
@@ -60,7 +61,7 @@ echo "Dataset Name: $DATASET_NAME"
   --res low_res --dataset_name $DATASET_NAME --device $DEVICE --load_last_step False  --run_wandb $WANDB \
   --low_res_dataset_name ACGPN \
   --niter 1 --niter_decay 1 --display_count 1 --print_step 1 --save_period 1 --val_count 1 \
-  --viton_batch_size 4 --datamode $DATAMODE --debug $DEBUG --sweeps $SWEEPS
+  --viton_batch_size 4 --datamode $DATAMODE --debug $DEBUG --sweeps $SWEEPS --seed $SEED
 
 
 # --niter 50 --niter_decay 50 --display_count 10 --print_step 10 --save_period 10 \

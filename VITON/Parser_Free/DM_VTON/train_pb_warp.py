@@ -314,7 +314,7 @@ def validate_batch(
         clothing_image_wandb = get_wandb_image(b[0], wandb=wandb)
         warped_wandb = get_wandb_image(e[0], wandb=wandb)
         my_table.add_data(wandb.Image((rgb).astype(np.uint8)), real_image_wandb,clothing_image_wandb,warped_wandb)
-        wandb.log({'val_warping_loss': loss_all,'val_loss_l1':loss_l1,'val_loss_vgg':loss_vgg,'Val_Table':my_table })
+        wandb.log({'val_warping_loss': loss_all,'val_l1_cloth':loss_l1,'val_loss_vgg':loss_vgg,'Val_Table':my_table })
     bgr = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
     if not os.path.exists(os.path.join(opt.results_dir, 'val')):
         os.makedirs(os.path.join(opt.results_dir, 'val'))
@@ -414,6 +414,7 @@ def copy_root_opt_to_opt(parser, root_opt):
     parser.run_wandb = root_opt.run_wandb
     parser.viton_batch_size = root_opt.viton_batch_size
     parser.save_period = root_opt.save_period
+    parser.seed = root_opt.seed
     parser.val_count = root_opt.val_count
     parser.print_step = root_opt.print_step
     parser.niter = root_opt.niter
@@ -527,7 +528,7 @@ def _train_pb_warp_():
         dataset_dir = os.path.join(root_opt.root_dir, root_opt.original_dir)
     train_data = LoadVITONDataset(root_opt, path=dataset_dir, phase='train', size=(256, 192))
     train_dataset, validation_dataset = split_dataset(train_data)
-    # train_data.__getitem__(0)
+    train_data.__getitem__(0)
     train_loader = DataLoader(train_dataset, batch_size=opt.viton_batch_size, shuffle=True, num_workers=root_opt.workers)
     validation_loader = DataLoader(validation_dataset, batch_size=opt.viton_batch_size, shuffle=True, num_workers=root_opt.workers)
 

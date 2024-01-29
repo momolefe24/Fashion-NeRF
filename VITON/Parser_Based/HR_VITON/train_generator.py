@@ -8,7 +8,7 @@ import os
 import time
 from VITON.Parser_Based.HR_VITON.networks import ConditionGenerator, VGGLoss, load_checkpoint, save_checkpoint, make_grid
 from VITON.Parser_Based.HR_VITON.network_generator import SPADEGenerator, MultiscaleDiscriminator, GANLoss
-
+from VITON.Parser_Based.HR_VITON.utils import generator_process_opt
 from VITON.Parser_Based.HR_VITON.sync_batchnorm import DataParallelWithCallback
 from tensorboardX import SummaryWriter
 from VITON.Parser_Based.HR_VITON.utils import create_network, visualize_segmap
@@ -288,14 +288,14 @@ def train_try_on_generator(opt, train_loader, test_loader,board,gen, generator, 
                                     nrow=4)
             out = output[i].cpu() / 2 + 0.5
             board.add_images('train_images', grid.unsqueeze(0), step + 1)
-            board.add_scalar('Loss/gen', loss_gen.item(), step + 1)
-            board.add_scalar('Loss/gen/adv', G_losses['GAN'].mean().item(), step + 1)
+            board.add_scalar('composition_loss', loss_gen.item(), step + 1)
+            board.add_scalar('gan_composition_loss', G_losses['GAN'].mean().item(), step + 1)
             #board.add_scalar('Loss/gen/l1', G_losses['L1'].mean().item(), step + 1)
-            board.add_scalar('Loss/gen/feat', G_losses['GAN_Feat'].mean().item(), step + 1)
-            board.add_scalar('Loss/gen/vgg', G_losses['VGG'].mean().item(), step + 1)
-            board.add_scalar('Loss/dis', loss_dis.item(), step + 1)
-            board.add_scalar('Loss/dis/adv_fake', D_losses['D_Fake'].mean().item(), step + 1)
-            board.add_scalar('Loss/dis/adv_real', D_losses['D_Real'].mean().item(), step + 1)
+            board.add_scalar('feat_composition_loss', G_losses['GAN_Feat'].mean().item(), step + 1)
+            board.add_scalar('vgg_composition_loss', G_losses['VGG'].mean().item(), step + 1)
+            board.add_scalar('composition_loss_disc', loss_dis.item(), step + 1)
+            board.add_scalar('fake_composition_loss_disc', D_losses['D_Fake'].mean().item(), step + 1)
+            board.add_scalar('real_composition_loss_disc', D_losses['D_Real'].mean().item(), step + 1)
             if wandb is not None:
                 my_table = wandb.Table(columns=['Grid', 'Segmentation Map For Label','Segmentation Map For Fake Data','Warped Cloth','Misalign'])
                 grid_wandb = get_wandb_image(grid, wandb)
@@ -304,10 +304,10 @@ def train_try_on_generator(opt, train_loader, test_loader,board,gen, generator, 
                 warped_cloth = get_wandb_image((warped_cloth_paired[0].cpu().detach() / 2 + 0.5), wandb)
                 misalign_cloth = get_wandb_image(out, wandb)
                 my_table.add_data(grid_wandb, segmap_for_label, segmap_for_fake_data,warped_cloth, misalign_cloth)
-                wandb.log({'Table': my_table, 'Gen': loss_gen.item()
-                ,'Loss/G/Adv':G_losses['GAN'].mean().item()
-                ,'Loss/G/feat':G_losses['GAN_Feat'].mean().item()
-                ,'Loss/G/vgg':G_losses['VGG'].mean().item()})
+                wandb.log({'Table': my_table, 'composition_loss': loss_gen.item()
+                ,'gan_composition_loss':G_losses['GAN'].mean().item()
+                ,'feat_composition_loss':G_losses['GAN_Feat'].mean().item()
+                ,'vgg_composition_loss':G_losses['VGG'].mean().item()})
                 
             # unpaired visualize
             generator.eval()
@@ -544,249 +544,8 @@ def train_try_on_generator(opt, train_loader, test_loader,board,gen, generator, 
             scheduler_gen.step()
             scheduler_dis.step()
 
-
-
-def get_root_experiment_runs(root_opt):
-    root_opt.experiment_run = root_opt.experiment_run.format(root_opt.experiment_number, root_opt.run_number)
-    root_opt.experiment_from_run = root_opt.experiment_from_run.format(root_opt.experiment_from_number, root_opt.run_from_number)
-    
-    root_opt.tocg_experiment_from_run = root_opt.tocg_experiment_from_run.format(root_opt.tocg_experiment_from_number, root_opt.tocg_run_from_number)
-    root_opt.tocg_discriminator_experiment_from_run = root_opt.tocg_discriminator_experiment_from_run.format(root_opt.tocg_discriminator_experiment_from_number, root_opt.tocg_discriminator_run_from_number)
-    
-    root_opt.gen_experiment_from_run = root_opt.gen_experiment_from_run.format(root_opt.gen_experiment_from_number, root_opt.gen_run_from_number)
-    root_opt.gen_discriminator_experiment_from_run = root_opt.gen_discriminator_experiment_from_run.format(root_opt.gen_discriminator_experiment_from_number, root_opt.gen_discriminator_run_from_number)
-    return root_opt
-
-def get_root_opt_experiment_dir(root_opt):
-    root_opt.rail_dir = root_opt.rail_dir.format(root_opt.dataset_name, root_opt.res, root_opt.datamode)    
-    root_opt.original_dir = root_opt.original_dir.format(root_opt.dataset_name, root_opt.res, root_opt.datamode)
-    if root_opt.res == 'low_res':
-        root_opt.original_dir = root_opt.original_dir.replace(root_opt.res, os.path.join(root_opt.res, root_opt.low_res_dataset_name))
-    # Current model
-    root_opt.this_viton_save_to_dir = os.path.join(root_opt.this_viton_save_to_dir, root_opt.VITON_Model)
-    root_opt.this_viton_load_from_dir = root_opt.this_viton_load_from_dir.format(root_opt.VITON_Type, root_opt.VITON_Name, root_opt.this_viton_load_from_dir)
-    root_opt.this_viton_load_from_dir = os.path.join(root_opt.this_viton_load_from_dir, root_opt.VITON_Model)
-    
-    # tocg
-    root_opt.tocg_experiment_from_dir = root_opt.tocg_experiment_from_dir.format(root_opt.VITON_Type, root_opt.VITON_Name, root_opt.tocg_load_from_model)
-    root_opt.tocg_experiment_from_dir = os.path.join(root_opt.tocg_experiment_from_dir, 'TOCG')
-    
-    # tocg discriminator
-    root_opt.tocg_discriminator_experiment_from_dir = root_opt.tocg_discriminator_experiment_from_dir.format(root_opt.VITON_Type, root_opt.VITON_Name, root_opt.tocg_discriminator_load_from_model)
-    root_opt.tocg_discriminator_experiment_from_dir = os.path.join(root_opt.tocg_discriminator_experiment_from_dir, root_opt.VITON_Model)    
-    
-    
-    # gen
-    root_opt.gen_experiment_from_dir = root_opt.gen_experiment_from_dir.format(root_opt.VITON_Type, root_opt.VITON_Name, root_opt.gen_load_from_model)
-    root_opt.gen_experiment_from_dir = os.path.join(root_opt.gen_experiment_from_dir, root_opt.VITON_Model)
-    
-    # gen discriminator
-    root_opt.gen_discriminator_experiment_from_dir = root_opt.gen_discriminator_experiment_from_dir.format(root_opt.VITON_Type, root_opt.VITON_Name, root_opt.gen_discriminator_load_from_model)
-    root_opt.gen_discriminator_experiment_from_dir = os.path.join(root_opt.gen_discriminator_experiment_from_dir, root_opt.VITON_Model)    
-    
-    return root_opt
-
-
-def get_root_opt_results_dir(parser, root_opt):
-    root_opt.transforms_dir = root_opt.transforms_dir.format(root_opt.dataset_name)
-    parser.tensorboard_dir = parser.tensorboard_dir.format(root_opt.experiment_run, root_opt.this_viton_save_to_dir)
-    parser.results_dir = parser.results_dir.format(root_opt.experiment_run, root_opt.this_viton_save_to_dir)
-    return parser, root_opt
-
-def copy_root_opt_to_opt(parser, root_opt):
-    parser.display_count = root_opt.display_count
-    parser.cuda = root_opt.cuda
-    parser.device = int(root_opt.device)
-    parser.dataset_name = root_opt.dataset_name
-    parser.warp_load_from_model = root_opt.warp_load_from_model
-    parser.load_last_step = root_opt.load_last_step if type(root_opt.load_last_step) == bool else eval(root_opt.load_last_step)
-    parser.run_wandb = root_opt.run_wandb
-    parser.viton_batch_size = root_opt.viton_batch_size
-    parser.save_period = root_opt.save_period
-    parser.print_step = root_opt.print_step
-    parser.niter = root_opt.niter
-    parser.niter_decay = root_opt.niter_decay
-    parser.VITON_Type = root_opt.VITON_Type
-    parser.VITON_selection_dir = parser.VITON_selection_dir.format(parser.VITON_Type, parser.VITON_Name)
-    return parser
-
-def get_root_opt_checkpoint_dir(opt, root_opt):
-    last_step = root_opt.load_last_step if type(root_opt.load_last_step) == bool else eval(root_opt.load_last_step)
-    sort_digit = lambda name: int(name.split('_')[-1].split('.')[0])
-    # ================================= tocg =================================
-    opt.tocg_save_step_checkpoint_dir = opt.tocg_save_step_checkpoint_dir.format(root_opt.experiment_run, root_opt.this_viton_save_to_dir)
-    opt.tocg_save_step_checkpoint_dir = fix(opt.tocg_save_step_checkpoint_dir)
-    opt.tocg_save_step_checkpoint = os.path.join(opt.tocg_save_step_checkpoint_dir, opt.tocg_save_step_checkpoint)
-    opt.tocg_save_step_checkpoint = fix(opt.checkpoint_root_dir + "/" + opt.tocg_save_step_checkpoint)
-    opt.tocg_save_step_checkpoint_dir = os.path.join("/",*opt.tocg_save_step_checkpoint.split("/")[:-1])
-    
-    opt.tocg_save_final_checkpoint_dir = opt.tocg_save_final_checkpoint_dir.format(root_opt.experiment_run, root_opt.this_viton_save_to_dir)
-    opt.tocg_save_final_checkpoint_dir = fix(opt.tocg_save_final_checkpoint_dir)
-    opt.tocg_save_final_checkpoint = os.path.join(opt.tocg_save_final_checkpoint_dir, opt.tocg_save_final_checkpoint)
-    opt.tocg_save_final_checkpoint = fix(opt.checkpoint_root_dir + "/" + opt.tocg_save_final_checkpoint)
-    opt.tocg_save_final_checkpoint_dir = os.path.join("/",*opt.tocg_save_final_checkpoint.split("/")[:-1])
-    
-    opt.tocg_load_final_checkpoint_dir = opt.tocg_load_final_checkpoint_dir.format(root_opt.tocg_experiment_from_run, root_opt.tocg_experiment_from_dir)
-    opt.tocg_load_final_checkpoint_dir = fix(opt.tocg_load_final_checkpoint_dir)
-    opt.tocg_load_final_checkpoint = os.path.join(opt.tocg_load_final_checkpoint_dir, opt.tocg_load_final_checkpoint)
-    opt.tocg_load_final_checkpoint = fix(opt.checkpoint_root_dir + "/" + opt.tocg_load_final_checkpoint)
-    opt.tocg_load_final_checkpoint_dir = os.path.join("/",*opt.tocg_load_final_checkpoint.split("/")[:-1])
-    
-    if not last_step:
-        opt.tocg_load_step_checkpoint_dir = opt.tocg_load_step_checkpoint_dir.format(root_opt.tocg_experiment_from_run, root_opt.tocg_experiment_from_dir)
-    else:
-        opt.tocg_load_step_checkpoint_dir = opt.tocg_load_step_checkpoint_dir.format(root_opt.tocg_experiment_from_run, root_opt.this_viton_save_to_dir)
-    opt.tocg_load_step_checkpoint_dir = fix(opt.tocg_load_step_checkpoint_dir)
-    if not last_step:
-        opt.tocg_load_step_checkpoint = os.path.join(opt.tocg_load_step_checkpoint_dir, opt.tocg_load_step_checkpoint)
-    else:
-        if os.path.isdir(opt.tocg_load_step_checkpoint_dir.format(root_opt.tocg_experiment_from_run, root_opt.this_viton_save_to_dir)):
-            os_list = os.listdir(opt.tocg_load_step_checkpoint_dir.format(root_opt.tocg_experiment_from_run, root_opt.this_viton_save_to_dir))
-            os_list = [string for string in os_list if "tocg" in string]
-            last_step = sorted(os_list, key=sort_digit)[-1]
-            opt.tocg_load_step_checkpoint = os.path.join(opt.tocg_load_step_checkpoint_dir, last_step)
-    opt.tocg_load_step_checkpoint = fix(opt.checkpoint_root_dir + "/" + opt.tocg_load_step_checkpoint)
-    opt.tocg_load_step_checkpoint_dir = os.path.join("/",*opt.tocg_load_step_checkpoint.split("/")[:-1])
-    # ================================= tocg DISCRIMINATOR =================================
-    opt.tocg_discriminator_save_step_checkpoint_dir = opt.tocg_discriminator_save_step_checkpoint_dir.format(root_opt.experiment_run, root_opt.this_viton_save_to_dir)
-    opt.tocg_discriminator_save_step_checkpoint_dir = fix(opt.tocg_discriminator_save_step_checkpoint_dir)
-    opt.tocg_discriminator_save_step_checkpoint = os.path.join(opt.tocg_discriminator_save_step_checkpoint_dir, opt.tocg_discriminator_save_step_checkpoint)
-    opt.tocg_discriminator_save_step_checkpoint = fix(opt.checkpoint_root_dir + "/" + opt.tocg_discriminator_save_step_checkpoint)
-    opt.tocg_discriminator_save_step_checkpoint_dir = os.path.join("/",*opt.tocg_discriminator_save_step_checkpoint.split("/")[:-1])
-    
-    opt.tocg_discriminator_save_final_checkpoint_dir = opt.tocg_discriminator_save_final_checkpoint_dir.format(root_opt.experiment_run, root_opt.this_viton_save_to_dir)
-    opt.tocg_discriminator_save_final_checkpoint_dir = fix(opt.tocg_discriminator_save_final_checkpoint_dir)
-    opt.tocg_discriminator_save_final_checkpoint = os.path.join(opt.tocg_discriminator_save_final_checkpoint_dir, opt.tocg_discriminator_save_final_checkpoint)
-    opt.tocg_discriminator_save_final_checkpoint = fix(opt.checkpoint_root_dir + "/" + opt.tocg_discriminator_save_final_checkpoint)
-    opt.tocg_discriminator_save_final_checkpoint_dir = os.path.join("/",*opt.tocg_discriminator_save_final_checkpoint.split("/")[:-1])
-    
-    
-    opt.tocg_discriminator_load_final_checkpoint_dir = opt.tocg_discriminator_load_final_checkpoint_dir.format(root_opt.tocg_experiment_from_run, root_opt.tocg_discriminator_experiment_from_dir)
-    opt.tocg_discriminator_load_final_checkpoint_dir = fix(opt.tocg_discriminator_load_final_checkpoint_dir)
-    opt.tocg_discriminator_load_final_checkpoint = os.path.join(opt.tocg_discriminator_load_final_checkpoint_dir, opt.tocg_discriminator_load_final_checkpoint)
-    opt.tocg_discriminator_load_final_checkpoint = fix(opt.checkpoint_root_dir + "/" + opt.tocg_discriminator_load_final_checkpoint)
-    opt.tocg_discriminator_load_final_checkpoint_dir = os.path.join("/",*opt.tocg_discriminator_load_final_checkpoint.split("/")[:-1])
-
-    if not last_step:
-        opt.tocg_discriminator_load_step_checkpoint_dir = opt.tocg_discriminator_load_step_checkpoint_dir.format(root_opt.tocg_discriminator_experiment_from_run, root_opt.tocg_discriminator_experiment_from_dir)
-    else:
-        opt.tocg_discriminator_load_step_checkpoint_dir = opt.tocg_discriminator_load_step_checkpoint_dir.format(root_opt.tocg_discriminator_experiment_from_run, root_opt.this_viton_save_to_dir)
-    opt.tocg_discriminator_load_step_checkpoint_dir = fix(opt.tocg_discriminator_load_step_checkpoint_dir)
-    if not last_step:
-        opt.tocg_discriminator_load_step_checkpoint = os.path.join(opt.tocg_discriminator_load_step_checkpoint_dir, opt.tocg_discriminator_load_step_checkpoint)
-    else:
-        if os.path.isdir(opt.tocg_discriminator_load_step_checkpoint_dir.format(root_opt.tocg_discriminator_experiment_from_run, root_opt.this_viton_save_to_dir)):
-            os_list = os.listdir(opt.tocg_discriminator_load_step_checkpoint_dir.format(root_opt.tocg_discriminator_experiment_from_run, root_opt.this_viton_save_to_dir))
-            os_list = [string for string in os_list if "tocg_discriminator" in string]
-            last_step = sorted(os_list, key=sort_digit)[-1]
-            opt.tocg_discriminator_load_step_checkpoint = os.path.join(opt.tocg_discriminator_load_step_checkpoint_dir, last_step)
-    opt.tocg_discriminator_load_step_checkpoint = fix(opt.checkpoint_root_dir + "/" + opt.tocg_discriminator_load_step_checkpoint)
-    opt.tocg_discriminator_load_step_checkpoint_dir = os.path.join("/",*opt.tocg_discriminator_load_step_checkpoint.split("/")[:-1])
-    # ================================= gen =================================
-    opt.gen_save_step_checkpoint_dir = opt.gen_save_step_checkpoint_dir.format(root_opt.experiment_run, root_opt.this_viton_save_to_dir)
-    opt.gen_save_step_checkpoint_dir = fix(opt.gen_save_step_checkpoint_dir)
-    opt.gen_save_step_checkpoint = os.path.join(opt.gen_save_step_checkpoint_dir, opt.gen_save_step_checkpoint)
-    opt.gen_save_step_checkpoint = fix(opt.checkpoint_root_dir + "/" + opt.gen_save_step_checkpoint)
-    opt.gen_save_step_checkpoint_dir = os.path.join("/",*opt.gen_save_step_checkpoint.split("/")[:-1])
-    
-    opt.gen_save_final_checkpoint_dir = opt.gen_save_final_checkpoint_dir.format(root_opt.experiment_run, root_opt.this_viton_save_to_dir)
-    opt.gen_save_final_checkpoint_dir = fix(opt.gen_save_final_checkpoint_dir)
-    opt.gen_save_final_checkpoint = os.path.join(opt.gen_save_final_checkpoint_dir, opt.gen_save_final_checkpoint)
-    opt.gen_save_final_checkpoint = fix(opt.checkpoint_root_dir + "/" + opt.gen_save_final_checkpoint)
-    opt.gen_save_final_checkpoint_dir = os.path.join("/",*opt.gen_save_final_checkpoint.split("/")[:-1])
-    
-    opt.gen_load_final_checkpoint_dir = opt.gen_load_final_checkpoint_dir.format(root_opt.gen_experiment_from_run, root_opt.gen_experiment_from_dir)
-    opt.gen_load_final_checkpoint_dir = fix(opt.gen_load_final_checkpoint_dir)
-    opt.gen_load_final_checkpoint = os.path.join(opt.gen_load_final_checkpoint_dir, opt.gen_load_final_checkpoint)
-    opt.gen_load_final_checkpoint = fix(opt.checkpoint_root_dir + "/" + opt.gen_load_final_checkpoint)
-    opt.gen_load_final_checkpoint_dir = os.path.join("/",*opt.gen_load_final_checkpoint.split("/")[:-1])
-    
-    if not last_step:
-        opt.gen_load_step_checkpoint_dir = opt.gen_load_step_checkpoint_dir.format(root_opt.gen_experiment_from_run, root_opt.gen_experiment_from_dir)
-    else:
-        opt.gen_load_step_checkpoint_dir = opt.gen_load_step_checkpoint_dir.format(root_opt.gen_experiment_from_run, root_opt.this_viton_save_to_dir)
-    opt.gen_load_step_checkpoint_dir = fix(opt.gen_load_step_checkpoint_dir)
-    if not last_step:
-        opt.gen_load_step_checkpoint = os.path.join(opt.gen_load_step_checkpoint_dir, opt.gen_load_step_checkpoint)
-    else:
-        if os.path.isdir(opt.gen_load_step_checkpoint_dir.format(root_opt.gen_experiment_from_run, root_opt.this_viton_save_to_dir)):
-            os_list = os.listdir(opt.gen_load_step_checkpoint_dir.format(root_opt.gen_experiment_from_run, root_opt.this_viton_save_to_dir))
-            os_list = [string for string in os_list if "gen" in string]
-            last_step = sorted(os_list, key=sort_digit)[-1]
-            opt.gen_load_step_checkpoint = os.path.join(opt.gen_load_step_checkpoint_dir, last_step)
-    opt.gen_load_step_checkpoint = fix(opt.checkpoint_root_dir + "/" + opt.gen_load_step_checkpoint)
-    opt.gen_load_step_checkpoint_dir = os.path.join("/",*opt.gen_load_step_checkpoint.split("/")[:-1])
-    # ================================= gen DISCRIMINATOR =================================
-    opt.gen_discriminator_save_step_checkpoint_dir = opt.gen_discriminator_save_step_checkpoint_dir.format(root_opt.experiment_run, root_opt.this_viton_save_to_dir)
-    opt.gen_discriminator_save_step_checkpoint_dir = fix(opt.gen_discriminator_save_step_checkpoint_dir)
-    opt.gen_discriminator_save_step_checkpoint = os.path.join(opt.gen_discriminator_save_step_checkpoint_dir, opt.gen_discriminator_save_step_checkpoint)
-    opt.gen_discriminator_save_step_checkpoint = fix(opt.checkpoint_root_dir + "/" + opt.gen_discriminator_save_step_checkpoint)
-    opt.gen_discriminator_save_step_checkpoint_dir = os.path.join("/",*opt.gen_discriminator_save_step_checkpoint.split("/")[:-1])
-    
-    opt.gen_discriminator_save_final_checkpoint_dir = opt.gen_discriminator_save_final_checkpoint_dir.format(root_opt.experiment_run, root_opt.this_viton_save_to_dir)
-    opt.gen_discriminator_save_final_checkpoint_dir = fix(opt.gen_discriminator_save_final_checkpoint_dir)
-    opt.gen_discriminator_save_final_checkpoint = os.path.join(opt.gen_discriminator_save_final_checkpoint_dir, opt.gen_discriminator_save_final_checkpoint)
-    opt.gen_discriminator_save_final_checkpoint = fix(opt.checkpoint_root_dir + "/" + opt.gen_discriminator_save_final_checkpoint)
-    opt.gen_discriminator_save_final_checkpoint_dir = os.path.join("/",*opt.gen_discriminator_save_final_checkpoint.split("/")[:-1])
-    
-    opt.gen_discriminator_load_final_checkpoint_dir = opt.gen_discriminator_load_final_checkpoint_dir.format(root_opt.gen_experiment_from_run, root_opt.gen_discriminator_experiment_from_dir)
-    opt.gen_discriminator_load_final_checkpoint_dir = fix(opt.gen_discriminator_load_final_checkpoint_dir)
-    opt.gen_discriminator_load_final_checkpoint = os.path.join(opt.gen_discriminator_load_final_checkpoint_dir, opt.gen_discriminator_load_final_checkpoint)
-    opt.gen_discriminator_load_final_checkpoint = fix(opt.checkpoint_root_dir + "/" + opt.gen_discriminator_load_final_checkpoint)
-    opt.gen_discriminator_load_final_checkpoint_dir = os.path.join("/",*opt.gen_discriminator_load_final_checkpoint.split("/")[:-1])
-    
-    if not last_step:
-        opt.gen_discriminator_load_step_checkpoint_dir = opt.gen_discriminator_load_step_checkpoint_dir.format(root_opt.gen_discriminator_experiment_from_run, root_opt.gen_discriminator_experiment_from_dir)
-    else:
-        opt.gen_discriminator_load_step_checkpoint_dir = opt.gen_discriminator_load_step_checkpoint_dir.format(root_opt.gen_discriminator_experiment_from_run, root_opt.this_viton_save_to_dir)
-    opt.gen_discriminator_load_step_checkpoint_dir = fix(opt.gen_discriminator_load_step_checkpoint_dir)
-    if not last_step:
-        opt.gen_discriminator_load_step_checkpoint = os.path.join(opt.gen_discriminator_load_step_checkpoint_dir, opt.gen_discriminator_load_step_checkpoint)
-    else:
-        if os.path.isdir(opt.gen_discriminator_load_step_checkpoint_dir.format(root_opt.gen_discriminator_experiment_from_run, root_opt.this_viton_save_to_dir)):
-            os_list = os.listdir(opt.gen_discriminator_load_step_checkpoint_dir.format(root_opt.gen_discriminator_experiment_from_run, root_opt.this_viton_save_to_dir))
-            os_list = [string for string in os_list if "gen_discriminator" in string]
-            last_step = sorted(os_list, key=sort_digit)[-1]
-            opt.gen_discriminator_load_step_checkpoint = os.path.join(opt.gen_discriminator_load_step_checkpoint_dir, last_step)
-    opt.gen_discriminator_load_step_checkpoint = fix(opt.checkpoint_root_dir + "/" + opt.gen_discriminator_load_step_checkpoint)
-    opt.gen_discriminator_load_step_checkpoint_dir = os.path.join("/",*opt.gen_discriminator_load_step_checkpoint.split("/")[:-1])
-    return opt
-
-def get_root_opt_results_dir(parser, root_opt):
-    root_opt.transforms_dir = root_opt.transforms_dir.format(root_opt.dataset_name)
-    parser.tensorboard_dir = parser.tensorboard_dir.format(root_opt.experiment_run, root_opt.this_viton_save_to_dir)
-    parser.results_dir = parser.results_dir.format(root_opt.experiment_run, root_opt.this_viton_save_to_dir)
-    return parser, root_opt
-
-def copy_root_opt_to_opt(parser, root_opt):
-    parser.display_count = root_opt.display_count
-    parser.cuda = root_opt.cuda
-    parser.device = int(root_opt.device)
-    parser.dataset_name = root_opt.dataset_name
-    parser.load_last_step = root_opt.load_last_step if type(root_opt.load_last_step) == bool else eval(root_opt.load_last_step)
-    parser.run_wandb = root_opt.run_wandb
-    parser.viton_batch_size = root_opt.viton_batch_size
-    parser.save_period = root_opt.save_period
-    parser.print_step = root_opt.print_step
-    parser.niter = root_opt.niter
-    parser.niter_decay = root_opt.niter_decay
-    parser.VITON_Type = root_opt.VITON_Type
-    parser.VITON_selection_dir = parser.VITON_selection_dir.format(parser.VITON_Type, parser.VITON_Name)
-    return parser
-
-def process_opt(opt, root_opt):
-    parser = opt
-    parser = argparse.Namespace(**parser)
-    root_opt = get_root_experiment_runs(root_opt)
-    root_opt = get_root_opt_experiment_dir(root_opt)
-    parser = get_root_opt_checkpoint_dir(parser, root_opt)
-    parser, root_opt = get_root_opt_results_dir(parser, root_opt)    
-    parser = copy_root_opt_to_opt(parser, root_opt)
-    return parser, root_opt
-
-
 def train_tryon_(opt, root_opt, run_wandb=False):
-    opt,root_opt = process_opt(opt, root_opt)
+    opt,root_opt = generator_process_opt(opt, root_opt)
     if run_wandb:
         import wandb
         wandb.login()

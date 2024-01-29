@@ -27,13 +27,17 @@ echo "Launching the script ${SLURM_JOB_NAME}"
 
 
 export EXPERIMENT_NUMBER=26
-export EXPERIMENT_FROM_NUMBER=17
+export EXPERIMENT_FROM_NUMBER=0
 export RUN_NUMBER=99
-export RUN_FROM_NUMBER=1
-export DATASET_NAME=Original
+export RUN_FROM_NUMBER=0
+export DATASET_NAME=Rail
 export TASK="PF_Gen"
 export DEBUG=1
+export SWEEPS=0
+export SEED=1
 export DATAMODE=train
+export WANDB=0
+export DEVICE=0
 export VITON_NAME=PF_AFN
 
 echo "Start Debug: $DEBUG"
@@ -62,6 +66,6 @@ echo "Dataset Name: $DATASET_NAME"
     --parser_based_gen_experiment_from_number 24 --parser_based_gen_run_from_number 1 --gen_load_from_model Original \
     --parser_free_warp_experiment_from_number 0 --parser_free_warp_run_from_number 0 --parser_free_warp_load_from_model Original \
     --parser_free_gen_experiment_from_number 0 --parser_free_gen_run_from_number 0 --parser_free_gen_load_from_model Original \
-    --dataset_name $DATASET_NAME --validate False --device 0 --load_last_step False --run_wandb False \
-    --niter 1 --niter_decay 1 --display_count 1 --print_step 1 --save_period 1 \
-    --viton_batch_size 4 --datamode $DATAMODE --debug $DEBUG
+    --dataset_name $DATASET_NAME --validate False --device $DEVICE --load_last_step False --run_wandb $WANDB \
+    --niter 1 --niter_decay 1 --display_count 1 --print_step 1 --save_period 1 --val_count 1000\
+    --viton_batch_size 4 --datamode $DATAMODE --debug $DEBUG --sweeps $SWEEPS --seed $SEED

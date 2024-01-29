@@ -37,7 +37,8 @@ VITON_Name: "HR_VITON"
 # ========================= Directory
 rail_dir: "data/VITON/{}/processed/{}/{}"
 original_dir: "data/VITON/{}/processed/{}/{}"
-root_dir: "/home-mscluster/mmolefe/Playground/Synthesising Virtual Fashion Try-On with Neural Radiance Fields/Fashion-SuperNeRF"
+#root_dir: "/home-mscluster/mmolefe/Playground/Synthesising Virtual Fashion Try-On with Neural Radiance Fields/Fashion-SuperNeRF"
+root_dir: '/mnt/data/home/molefe/Playground/Synthesising Virtual Fashion Try-On with Neural Radiance Fields/Fashion-NeRF'
 checkpoint_root_dir: "/gluster/mmolefe"
 dataset_root_dir: "/datasets/mmolefe"
 tensorboard_dir: "./tensorboard/{}/{}"
@@ -119,7 +120,7 @@ no_GAN_loss: False
 lasttvonly: True
 interflowloss: True
 clothmask_composition: warp_grad # ['no_composition', 'detach', 'warp_grad']
-segment_anything: False
+segment_anything: True
 flow_self_attention: False
 flow_spatial_attention: False
 flow_channel_attention: true
@@ -164,7 +165,7 @@ load_step: 0
 decay_step: 100000
 keep_step: 100000
 fp16: false
-
+seed: 1
 
 # ===================== Input/Output Hyperparameters
 semantic_nc: 13

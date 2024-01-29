@@ -25,18 +25,19 @@ echo "Launching the script ${SLURM_JOB_NAME}"
 # ./scripts/viton/viton.sh $SLURM_JOB_NAME {experiment_number}  {run_number} {experiment_from}  {run_number_from}
 # ./scripts/viton/viton.sh $SLURM_JOB_NAME 1 6 1 6
 
-# export EXPERIMENT_NUMBER=7
-# export EXPERIMENT_FROM_NUMBER=0
-# export RUN_NUMBER=99
-# export RUN_FROM_NUMBER=0
-# export DATASET_NAME=Rail
-# export TASK="GMM"
-# export DEBUG=1
-# export SWEEPS=1
-# export DATAMODE=train
-# export WANDB=1
-# export DEVICE=0
-# export VITON_NAME=CP_VTON
+export EXPERIMENT_NUMBER=7
+export EXPERIMENT_FROM_NUMBER=0
+export RUN_NUMBER=99
+export RUN_FROM_NUMBER=0
+export SEED=1
+export DATASET_NAME=Rail
+export TASK="GMM"
+export DEBUG=1
+export SWEEPS=1
+export DATAMODE=train
+export WANDB=1
+export DEVICE=0
+export VITON_NAME=CP_VTON
 
 echo "Start Debug: $DEBUG"
 echo "Experiment Number: $EXPERIMENT_NUMBER"
@@ -51,4 +52,4 @@ echo "Dataset Name: $DATASET_NAME"
   --res low_res --dataset_name $DATASET_NAME  --run_wandb $WANDB \
   --low_res_dataset_name viton_plus \
   --niter 100000 --niter_decay 100000 --display_count 100 --print_step 100 --save_period 100 --val_count 100 \
-  --viton_batch_size 4 --datamode $DATAMODE --debug $DEBUG --sweeps $SWEEPS
+  --viton_batch_size 4 --datamode $DATAMODE --debug $DEBUG --sweeps $SWEEPS --seed $SEED
