@@ -72,6 +72,31 @@ then
 fi
 
 
+if [ "${args[job_name]}" == "FS_VTON" ]
+then
+    if [ "${args[task]}" == "PB_Warp" ]
+    then     
+    ./scripts/viton/fs_vton/pb_fsvton_warp.sh --task ${args[task]} --experiment_number ${args[experiment_number]} --run_number ${args[run_number]} --experiment_from_number ${args[experiment_from_number]} --run_from_number ${args[run_from_number]} --warp_load_from_model ${args[warp_load_from_model]} --dataset_name ${args[dataset_name]} --device ${args[device]} --load_last_step ${args[load_last_step]} --run_wandb ${args[run_wandb]} --dataset_name ${args[dataset_name]} --niter ${args[niter]} --niter_decay ${args[niter_decay]} --display_count ${args[display_count]} --print_step ${args[print_step]} --save_period ${args[save_period]} --viton_batch_size ${args[viton_batch_size]} --datamode ${args[datamode]} --debug ${args[debug]} --sweeps ${args[sweeps]} --val_count ${args[val_count]} --seed ${args[seed]}
+    fi
+
+    if [ "${args[task]}" == "PB_Gen" ]
+    then     
+    
+    ./scripts/viton/fs_vton/pb_fsvton_e2e.sh --task ${args[task]} --experiment_number ${args[experiment_number]} --run_number ${args[run_number]} --experiment_from_number ${args[experiment_from_number]} --run_from_number ${args[run_from_number]} --warp_experiment_from_number ${args[warp_experiment_from_number]} --warp_run_from_number ${args[warp_run_from_number]} --gen_experiment_from_number ${args[gen_experiment_from_number]} --gen_run_from_number ${args[gen_run_from_number]} --warp_load_from_model ${args[warp_load_from_model]} --gen_load_from_model ${args[gen_load_from_model]} --device ${args[device]} --load_last_step ${args[load_last_step]} --run_wandb ${args[run_wandb]} --dataset_name ${args[dataset_name]} --niter ${args[niter]} --niter_decay ${args[niter_decay]} --display_count ${args[display_count]} --print_step ${args[print_step]} --save_period ${args[save_period]} --viton_batch_size ${args[viton_batch_size]} --datamode ${args[datamode]} --debug ${args[debug]} --sweeps ${args[sweeps]} --val_count ${args[val_count]} --seed ${args[seed]}
+    fi
+
+    if [ "${args[task]}" == "PF_Warp" ]
+    then     
+    ./scripts/viton/fs_vton/pf_fsvton_warp.sh --task ${args[task]} --experiment_number ${args[experiment_number]} --run_number ${args[run_number]} --experiment_from_number ${args[experiment_from_number]} --run_from_number ${args[run_from_number]} --parser_based_warp_experiment_from_number ${args[parser_based_warp_experiment_from_number]} --parser_based_warp_run_from_number ${args[parser_based_warp_run_from_number]} --parser_based_gen_experiment_from_number ${args[parser_based_gen_experiment_from_number]} --parser_based_gen_run_from_number ${args[parser_based_gen_run_from_number]} --warp_load_from_model ${args[warp_load_from_model]} --gen_load_from_model ${args[gen_load_from_model]} --parser_free_warp_experiment_from_number ${args[parser_free_warp_experiment_from_number]} --parser_free_warp_run_from_number ${args[parser_free_warp_run_from_number]} --parser_free_warp_load_from_model ${args[parser_free_warp_load_from_model]} --dataset_name ${args[dataset_name]} --device ${args[device]} --load_last_step ${args[load_last_step]} --run_wandb ${args[run_wandb]} --niter ${args[niter]} --niter_decay ${args[niter_decay]} --display_count ${args[display_count]} --print_step ${args[print_step]} --save_period ${args[save_period]} --viton_batch_size ${args[viton_batch_size]} --datamode ${args[datamode]} --debug ${args[debug]} --sweeps ${args[sweeps]} --val_count ${args[val_count]} --seed ${args[seed]}
+    fi
+
+    if [ "${args[task]}" == "PF_Gen" ]
+    then     
+    ./scripts/viton/fs_vton/pf_fsvton_e2e.sh --task ${args[task]} --experiment_number ${args[experiment_number]} --run_number ${args[run_number]} --experiment_from_number ${args[experiment_from_number]} --run_from_number ${args[run_from_number]} --parser_based_warp_experiment_from_number ${args[parser_based_warp_experiment_from_number]} --parser_based_warp_run_from_number ${args[parser_based_warp_run_from_number]} --parser_based_gen_experiment_from_number ${args[parser_based_gen_experiment_from_number]} --parser_based_gen_run_from_number ${args[parser_based_gen_run_from_number]} --warp_load_from_model ${args[warp_load_from_model]} --gen_load_from_model ${args[gen_load_from_model]} --parser_free_warp_experiment_from_number ${args[parser_free_warp_experiment_from_number]} --parser_free_warp_run_from_number ${args[parser_free_warp_run_from_number]} --parser_free_warp_load_from_model ${args[parser_free_warp_load_from_model]} --parser_free_gen_experiment_from_number ${args[parser_free_gen_experiment_from_number]} --parser_free_gen_run_from_number ${args[parser_free_gen_run_from_number]} --parser_free_gen_load_from_model ${args[parser_free_gen_load_from_model]} --validate ${args[validate]} --dataset_name ${args[dataset_name]} --device ${args[device]} --load_last_step ${args[load_last_step]} --run_wandb ${args[run_wandb]} --niter ${args[niter]} --niter_decay ${args[niter_decay]} --display_count ${args[display_count]} --print_step ${args[print_step]} --save_period ${args[save_period]} --viton_batch_size ${args[viton_batch_size]} --datamode ${args[datamode]} --debug ${args[debug]} --sweeps ${args[sweeps]} --val_count ${args[val_count]} --seed ${args[seed]}
+    fi
+
+fi
+
 
 if [ "${args[job_name]}" == "ACGPN" ]
 then
@@ -142,6 +167,42 @@ echo "Running HR_VITON ..."
     --viton_batch_size ${args[viton_batch_size]} --datamode ${args[datamode]} --debug ${args[debug]} --sweeps ${args[sweeps]} --val_count ${args[val_count]} --seed ${args[seed]}
   fi
 fi
+
+
+
+if [ "${args[job_name]}" == "SD_VITON" ]
+then
+echo "Running SD_VITON ..."
+ if [ "${args[VITON_Model]}" == "TOCG" ] 
+ then
+  ./scripts/viton/sd_viton/tocg_sd_viton.sh --experiment_number ${args[experiment_number]} --run_number ${args[run_number]} \
+    --experiment_from_number ${args[experiment_from_number]} --run_from_number ${args[run_from_number]} \
+    --tocg_experiment_from_number ${args[tocg_experiment_from_number]} --tocg_run_from_number ${args[tocg_run_from_number]} \
+    --tocg_discriminator_experiment_from_number ${args[tocg_discriminator_experiment_from_number]} --tocg_discriminator_run_from_number ${args[tocg_discriminator_run_from_number]} \
+    --tocg_load_from_model ${args[tocg_load_from_model]} --tocg_discriminator_load_from_model ${args[tocg_discriminator_load_from_model]} \
+    --VITON_Type Parser_Based --VITON_Name SD_VITON --VITON_Model ${args[VITON_Model]} --load_last_step ${args[load_last_step]} \
+    --gpu_ids 0 --device ${args[device]} --res high_res --dataset_name ${args[dataset_name]} --run_wandb ${args[run_wandb]} \
+    --niter ${args[niter]} --niter_decay ${args[niter_decay]} --display_count ${args[display_count]} --print_step ${args[print_step]} --save_period ${args[save_period]} \
+    --viton_batch_size ${args[viton_batch_size]} --datamode ${args[datamode]} --debug ${args[debug]} --sweeps ${args[sweeps]} --val_count ${args[val_count]} --seed ${args[seed]}
+  fi 
+
+  if [ "${args[VITON_Model]}" == "GEN" ] 
+  then 
+    ./scripts/viton/sd_viton/gen_sd_viton.sh --experiment_number ${args[experiment_number]} --run_number ${args[run_number]} \
+    --experiment_from_number ${args[experiment_from_number]} --run_from_number ${args[run_from_number]} \
+    --tocg_experiment_from_number ${args[tocg_experiment_from_number]} --tocg_run_from_number ${args[tocg_run_from_number]} \
+    --tocg_discriminator_experiment_from_number ${args[tocg_discriminator_experiment_from_number]} --tocg_discriminator_run_from_number ${args[tocg_discriminator_run_from_number]} \
+    --tocg_load_from_model ${args[tocg_load_from_model]} --tocg_discriminator_load_from_model ${args[tocg_discriminator_load_from_model]} \
+    --gen_experiment_from_number ${args[gen_experiment_from_number]} --gen_run_from_number ${args[gen_run_from_number]} \
+    --gen_discriminator_experiment_from_number ${args[gen_discriminator_experiment_from_number]} --gen_discriminator_run_from_number ${args[gen_discriminator_run_from_number]} \
+    --gen_load_from_model ${args[gen_load_from_model]} --gen_discriminator_load_from_model ${args[gen_discriminator_load_from_model]} \
+    --VITON_Type Parser_Based --VITON_Name SD_VITON --VITON_Model ${args[VITON_Model]} --load_last_step ${args[load_last_step]} \
+    --gpu_ids 0 --device ${args[device]} --res high_res --dataset_name ${args[dataset_name]} --run_wandb ${args[run_wandb]} \
+    --niter ${args[niter]} --niter_decay ${args[niter_decay]} --display_count ${args[display_count]} --print_step ${args[print_step]} --save_period ${args[save_period]} \
+    --viton_batch_size ${args[viton_batch_size]} --datamode ${args[datamode]} --debug ${args[debug]} --sweeps ${args[sweeps]} --val_count ${args[val_count]} --seed ${args[seed]}
+  fi
+fi
+
 
 
 if [ "${args[job_name]}" == "Ladi_VITON" ]

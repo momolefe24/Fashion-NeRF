@@ -195,6 +195,13 @@ def train_gmm(opt, train_loader, validation_loader, model, board, wandb=None):
 
         if (step+1) % opt.display_count == 0:
             board_add_images(board, 'combine', visuals, step+1)
+            board.add_image('Image', im[0], step+1)
+            board.add_image('Pose Image', im_pose[0], step+1)
+            board.add_image('Clothing', c[0], step+1)
+            board.add_image('Parse Clothing', im_c[0], step+1)
+            board.add_image('Parse Clothing Mask', im_cm[0], step+1)
+            board.add_image('Warped Cloth', warped_cloth[0], step+1)
+            board.add_image('Warped Cloth Mask', warped_mask[0], step+1)
             board.add_scalar('warping_loss', loss.item(), step+1)
             board.add_scalar('40*Lgic', (40*Lgic).item(), step+1)
             board.add_scalar('l1_cloth', Lwarp.item(), step+1)
@@ -220,13 +227,13 @@ def train_gmm(opt, train_loader, validation_loader, model, board, wandb=None):
             # break
         
         if (step + 1) % opt.val_count == 0:
-            validate_gmm(validation_loader, model, wandb=wandb)
+            validate_gmm(validation_loader, model, board, wandb=wandb)
             model.train()
         if (step+1) % opt.save_period == 0:
             save_checkpoint(model, opt.gmm_save_step_checkpoint % (step+1))
     save_checkpoint(model, opt.gmm_load_final_checkpoint)
     
-def validate_gmm(validation_loader,model,wandb=wandb):
+def validate_gmm(validation_loader,model,board, wandb=wandb):
     model.cuda()
     model.eval()
     # criterion
@@ -266,6 +273,15 @@ def validate_gmm(validation_loader,model,wandb=wandb):
     Lgic = Lgic / (grid.shape[0] * grid.shape[1] * grid.shape[2])
 
     loss = Lwarp + 40 * Lgic    # total GMM loss
+    board.add_scalar('Val/warping_loss', loss.item())
+    board.add_scalar('Val/l1_cloth', Lwarp.item())
+    board.add_image('Val/Image', im[0])
+    board.add_image('Val/Pose Image', im_pose[0])
+    board.add_image('Val/Clothing', c[0])
+    board.add_image('Val/Parse Clothing', im_c[0])
+    board.add_image('Val/Parse Clothing Mask', im_cm[0])
+    board.add_image('Val/Warped Cloth', warped_cloth[0])
+    board.add_image('Val/Warped Cloth Mask', warped_mask[0])
     if wandb is not None:
         my_table = wandb.Table(columns=['Image', 'Pose Image','Clothing','Parse Clothing','Parse Clothing Mask','Warped Cloth','Warped Cloth Mask'])
         real_image_wandb = get_wandb_image(im[0], wandb=wandb) # 'Image'
@@ -345,6 +361,15 @@ def train_tom(opt, train_loader, validation_loader,  gmm_model, model, board, wa
 
         if (step+1) % opt.display_count == 0:
             board_add_images(board, 'combine', visuals, step+1)
+            board.add_image('Real Image', im[0], 0)
+            board.add_image('Head Image', im_h[0], 0)
+            board.add_image('Cloth', c[0], 0)
+            board.add_image('Cloth Mask', (cm*2-1)[0], 0)
+            board.add_image('Warped Cloth', warped_cloth[0], 0)
+            board.add_image('Warped Cloth Mask', (warped_mask*2-1)[0], 0)
+            board.add_image('Composite Mask', (m_composite*2-1)[0], 0)
+            board.add_image('Rendered Image', p_rendered[0], 0)
+            board.add_image('Try-On', p_tryon[0], 0)
             board.add_scalar('composition_loss', loss.item(), step+1)
             board.add_scalar('l1_composition_loss', loss_l1.item(), step+1)
             board.add_scalar('vgg_composition_loss', loss_vgg.item(), step+1)
@@ -379,13 +404,13 @@ def train_tom(opt, train_loader, validation_loader,  gmm_model, model, board, wa
                      loss_vgg.item(), loss_mask.item()), flush=True)
 
         if (step + 1) % opt.val_count == 0:
-            validate_tom(validation_loader, model,gmm_model, wandb=wandb)
+            validate_tom(validation_loader, model,gmm_model, board, wandb=wandb)
             model.train()
         if (step+1) % opt.save_period == 0:
             print_log(os.path.join(opt.results_dir, 'log.txt'), f'Save pretrained model to {opt.tom_save_step_checkpoint}')
             save_checkpoint(model, opt.tom_save_step_checkpoint % (step+1))
             
-def validate_tom(validation_loader,model,gmm_model, wandb=wandb):
+def validate_tom(validation_loader,model,gmm_model,board, wandb=wandb):
     model.cuda()
     model.eval()
 
@@ -433,7 +458,18 @@ def validate_tom(validation_loader,model,gmm_model, wandb=wandb):
         # loss_mask = criterionMask(m_composite, cm)  # CP-VTON
         loss_mask = criterionMask(m_composite, pcm)  # CP-VTON+
         loss = loss_l1 + loss_vgg + loss_mask
-        
+        board.add_scalar('Val/composition_loss', loss.item(), step+1)
+        board.add_scalar('Val/l1_composition_loss', loss_l1.item(), step+1)
+        board.add_scalar('Val/vgg_composition_loss', loss_vgg.item(), step+1)
+        board.add_scalar('Val/mask_composition_loss', loss_mask.item(), step+1)
+        board.add_image('Val/Real Image', im[0], 0)
+        board.add_image('Val/Head Image', im_h[0], 0)
+        board.add_image('Val/Cloth', c[0], 0)
+        board.add_image('Val/Cloth Mask', (cm*2-1)[0], 0)
+        board.add_image('Val/Warped Cloth', warped_cloth[0], 0)
+        board.add_image('Val/Warped Cloth Mask', (warped_mask*2-1)[0], 0)
+        board.add_image('Val/Composite Mask', (m_composite*2-1)[0], 0)
+        board.add_image('Val/Rendered Image', p_rendered[0], 0)
         if wandb is not None:
             my_table = wandb.Table(columns=['Image','Head Image','Cloth','Cloth Mask','Warped Cloth','Warped Cloth Mask','Composite Mask','Rendered Image','Try-On'])
             real_image_wandb = get_wandb_image(im[0], wandb=wandb)

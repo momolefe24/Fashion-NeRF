@@ -298,6 +298,13 @@ def train_model(opt,root_opt, train_loader, test_loader, validation_loader, boar
                               visualize_segmap(label.cpu()), visualize_segmap(fake_segmap.cpu()), (im[0]/2 +0.5), (misalign[0].cpu().detach()).expand(3, -1, -1)],
                                 nrow=4)
             board.add_images('train_images', grid.unsqueeze(0), step + 1)
+            board.add_image('Image', (im_c[0].cpu() / 2 + 0.5), 0)
+            board.add_image('Pose Image', (openpose[0].cpu() / 2 + 0.5), 0)
+            board.add_image('Clothing', (c_paired[0].cpu() / 2 + 0.5), 0)
+            board.add_image('Parse Clothing', (im_c[0].cpu() / 2 + 0.5), 0)
+            board.add_image('Parse Clothing Mask', parse_cloth_mask[0].cpu().expand(3, -1, -1), 0)
+            board.add_image('Warped Cloth', (warped_cloth_paired[0].cpu().detach() / 2 + 0.5), 0)
+            board.add_image('Warped Cloth Mask', warped_clothmask_paired[0].cpu().detach().expand(3, -1, -1), 0)
             if wandb is not None:
                 my_table = wandb.Table(columns=['Image', 'Pose Image','Clothing','Parse Clothing','Parse Clothing Mask','Warped Cloth','Warped Cloth Mask'])
                 grid_wandb = get_wandb_image(grid, wandb)
@@ -361,12 +368,12 @@ def train_model(opt,root_opt, train_loader, test_loader, validation_loader, boar
                 misalign = fake_clothmask - warped_cm_onehot
                 misalign[misalign < 0.0] = 0.0
                 
-                for i in range(opt.num_test_visualize):
-                    grid = make_grid([(c_paired[i].cpu() / 2 + 0.5), (cm_paired[i].cpu()).expand(3, -1, -1), visualize_segmap(parse_agnostic.cpu(), batch=i), ((densepose.cpu()[i]+1)/2),
-                                    (im_c[i].cpu() / 2 + 0.5), parse_cloth_mask[i].cpu().expand(3, -1, -1), (warped_cloth_paired[i].cpu().detach() / 2 + 0.5), (warped_cm_onehot[i].cpu().detach()).expand(3, -1, -1),
-                                    visualize_segmap(label.cpu(), batch=i), visualize_segmap(fake_segmap.cpu(), batch=i), (im[i]/2 +0.5), (misalign[i].cpu().detach()).expand(3, -1, -1)],
-                                        nrow=4)
-                    board.add_images(f'test_images/{i}', grid.unsqueeze(0), step + 1)
+                # for i in range(opt.num_test_visualize):
+                #     grid = make_grid([(c_paired[i].cpu() / 2 + 0.5), (cm_paired[i].cpu()).expand(3, -1, -1), visualize_segmap(parse_agnostic.cpu(), batch=i), ((densepose.cpu()[i]+1)/2),
+                #                     (im_c[i].cpu() / 2 + 0.5), parse_cloth_mask[i].cpu().expand(3, -1, -1), (warped_cloth_paired[i].cpu().detach() / 2 + 0.5), (warped_cm_onehot[i].cpu().detach()).expand(3, -1, -1),
+                #                     visualize_segmap(label.cpu(), batch=i), visualize_segmap(fake_segmap.cpu(), batch=i), (im[i]/2 +0.5), (misalign[i].cpu().detach()).expand(3, -1, -1)],
+                #                         nrow=4)
+                #     board.add_images(f'test_images/{i}', grid.unsqueeze(0), step + 1)
                 tocg.train()
         
         # display
@@ -569,24 +576,31 @@ def validate_tocg(opt, step, tocg,D, validation_loader,board,wandb):
                 
                 loss_D = loss_D_fake + loss_D_real
                 
-            board.add_scalar('val_warping_loss', loss_G.item(), step + 1)
-            board.add_scalar('val_warping_l1', loss_l1_cloth.item(), step + 1)
-            board.add_scalar('val_warping_vgg', loss_vgg.item(), step + 1)
-            board.add_scalar('val_warping_total_variation_loss', loss_tv.item(), step + 1)
-            board.add_scalar('val_warping_cross_entropy_loss', CE_loss.item(), step + 1)
+            board.add_scalar('Val/warping_loss', loss_G.item(), step + 1)
+            board.add_scalar('Val/warping_l1', loss_l1_cloth.item(), step + 1)
+            board.add_scalar('Val/warping_vgg', loss_vgg.item(), step + 1)
+            board.add_scalar('Val/warping_total_variation_loss', loss_tv.item(), step + 1)
+            board.add_scalar('Val/warping_cross_entropy_loss', CE_loss.item(), step + 1)
 # Wandb     
             if not opt.no_GAN_loss:
-                board.add_scalar('val_gan', loss_G_GAN.item(), step + 1)
+                board.add_scalar('Val/gan', loss_G_GAN.item(), step + 1)
                 # loss D
-                board.add_scalar('val_discriminator', loss_D.item(), step + 1)
-                board.add_scalar('val_pred_real', loss_D_real.item(), step + 1)
-                board.add_scalar('val_pred_fake', loss_D_fake.item(), step + 1)
+                board.add_scalar('Val/discriminator', loss_D.item(), step + 1)
+                board.add_scalar('Val/pred_real', loss_D_real.item(), step + 1)
+                board.add_scalar('Val/pred_fake', loss_D_fake.item(), step + 1)
             save_image(warped_cloth_paired, os.path.join(opt.results_dir,'val', f'warped_cloth_paired_{step}.png'))
             grid = make_grid([(c_paired[0].cpu() / 2 + 0.5), (cm_paired[0].cpu()).expand(3, -1, -1), visualize_segmap(parse_agnostic.cpu()), ((densepose.cpu()[0]+1)/2),
                               (im_c[0].cpu() / 2 + 0.5), parse_cloth_mask[0].cpu().expand(3, -1, -1), (warped_cloth_paired[0].cpu().detach() / 2 + 0.5), (warped_cm_onehot[0].cpu().detach()).expand(3, -1, -1),
                               visualize_segmap(label.cpu()), visualize_segmap(fake_segmap.cpu()), (im[0]/2 +0.5), (misalign[0].cpu().detach()).expand(3, -1, -1)],
                                 nrow=4)
             board.add_images('valid_images', grid.unsqueeze(0), step + 1)
+            board.add_image('Val/Image', (im_c[0].cpu() / 2 + 0.5), 0)
+            board.add_image('Val/Pose Image', (openpose[0].cpu() / 2 + 0.5), 0)
+            board.add_image('Val/Clothing', (c_paired[0].cpu() / 2 + 0.5), 0)
+            board.add_image('Val/Parse Clothing', (im_c[0].cpu() / 2 + 0.5), 0)
+            board.add_image('Val/Parse Clothing Mask', parse_cloth_mask[0].cpu().expand(3, -1, -1), 0)
+            board.add_image('Val/Warped Cloth', (warped_cloth_paired[0].cpu().detach() / 2 + 0.5), 0)
+            board.add_image('Val/Warped Cloth Mask', warped_clothmask_paired[0].cpu().detach().expand(3, -1, -1), 0)
             if wandb is not None:
                 my_table = wandb.Table(columns=['Image', 'Pose Image','Clothing','Parse Clothing','Parse Clothing Mask','Warped Cloth','Warped Cloth Mask'])
                 image_wandb = get_wandb_image((im_c[0].cpu() / 2 + 0.5),wandb) # 'Image'
@@ -731,7 +745,6 @@ def _train_hrviton_tocg_():
     if last_step:
         load_checkpoint(tocg, opt.tocg_load_step_checkpoint)
         print_log(log_path, f'Load pretrained model from {opt.tocg_load_step_checkpoint}')
-        
         load_checkpoint(D, opt.tocg_discriminator_load_step_checkpoint)
         print_log(log_path, f'Load pretrained discimrinator model from {opt.tocg_discriminator_load_step_checkpoint}')
     elif os.path.exists(opt.tocg_load_final_checkpoint):

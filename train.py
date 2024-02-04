@@ -43,7 +43,10 @@ def train_pfafn(opt, root_opt, run_wandb, sweeps, VITON_Model):
     elif VITON_Model == 'PF_Gen':
         train_pfafn_e2e_(opt, root_opt, run_wandb=run_wandb, sweep=sweeps)   
         
-        
+def train_fsvton(opt, root_opt, run_wandb, sweeps, VITON_Model):
+    from VITON.Parser_Free.FS_VTON.train.train_PBAFN_stage1_fs import train_fsvton_pb_warp_
+    if VITON_Model == 'PB_Warp':
+        train_fsvton_pb_warp_(opt, root_opt, run_wandb=run_wandb, sweep=sweeps)
 
 def train_hrviton(opt, root_opt, run_wandb, sweeps, VITON_Model):
     from VITON.Parser_Based.HR_VITON.train_condition import train_hrviton_tocg_
@@ -57,18 +60,26 @@ def train_ladi_vton(opt, root_opt, run_wandb, sweeps, VITON_Model):
     from VITON.Parser_Based.Ladi_VTON.src.train_tps import train_ladi_vton_tps_
     if VITON_Model == 'TPS':
         train_ladi_vton_tps_(opt, root_opt, run_wandb=run_wandb)
-    # elif VITON_Model == 'EMASC':
-    #     train_emasc_(opt, root_opt, run_wandb=run_wandb)
+    
+    
+def train_sdviton(opt, root_opt, run_wandb, sweeps, VITON_Model):
+    from VITON.Parser_Based.SD_VITON.train_condition import train_sd_viton_tocg_
+    if VITON_Model == 'TOCG':
+        train_sd_viton_tocg_(opt, root_opt, run_wandb=run_wandb, sweep=sweeps)
         
 def train_viton(opt, root_opt, run_wandb, sweeps,VITON_Name, VITON_Model):
     if VITON_Name == 'HR_VITON':
         train_hrviton(opt, root_opt, run_wandb, sweeps, VITON_Model)
     elif VITON_Name == 'ACGPN':
         train_acgpn(opt, root_opt, run_wandb, sweeps, VITON_Model)
+    elif VITON_Name == 'SD_VITON':
+        train_sdviton(opt, root_opt, run_wandb, sweeps, VITON_Model)
     elif VITON_Name == 'DM_VTON':
         train_dmvton(opt, root_opt, run_wandb, sweeps, VITON_Model)
     elif VITON_Name == 'PF_AFN':
         train_pfafn(opt, root_opt, run_wandb, sweeps, VITON_Model)
+    elif VITON_Name == "FS_VTON":
+        train_fsvton(opt, root_opt, run_wandb, sweeps, VITON_Model)
     elif VITON_Name == 'CP_VTON':
         train_cp_vton(opt, root_opt, run_wandb, sweeps)
     elif VITON_Name == 'CP_VTON_plus':
