@@ -270,9 +270,6 @@ def _train_pfafn_e2e_():
     with open(log_path, 'w') as file:
         file.write(f"Hello, this is experiment {root_opt.experiment_run} \n")
     
-    
-    
-
     start_epoch, epoch_iter = 1, 0
 
     train_data = CreateDataset(opt, root_opt)

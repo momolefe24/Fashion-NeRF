@@ -113,6 +113,7 @@ def train_try_on_generator(opt, train_loader,validation_loader, test_loader,boar
         parse_agnostic = inputs['parse_agnostic'].cuda()
         pcm = inputs['pcm'].cuda()
         cm = inputs['cloth_mask']['paired'].cuda()
+        openpose = inputs['pose'].cuda()
         c_paired = inputs['cloth']['paired'].cuda()
         
         # target
@@ -290,6 +291,13 @@ def train_try_on_generator(opt, train_loader,validation_loader, test_loader,boar
                                     nrow=4)
             out = output[i].cpu() / 2 + 0.5
             board.add_images('train_images', grid.unsqueeze(0), step + 1)
+            board.add_image('Image', (im[0].cpu() / 2 + 0.5), 0)
+            board.add_image('Pose Image', (openpose[0].cpu() / 2 + 0.5), 0)
+            board.add_image('Parse Clothing', (parse_cloth[0].cpu() / 2 + 0.5), 0)
+            board.add_image('Parse Clothing Mask', pcm[0].cpu().expand(3, -1, -1), 0)
+            board.add_image('Warped Cloth', (warped_cloth_paired[0].cpu().detach() / 2 + 0.5), 0)
+            board.add_image('Warped Cloth Mask', warped_clothmask_paired[0].cpu().detach().expand(3, -1, -1), 0)
+            board.add_image('Composition', out, 0)
             board.add_scalar('composition_loss', loss_gen.item(), step + 1)
             board.add_scalar('gan_composition_loss', G_losses['GAN'].mean().item(), step + 1)
             #board.add_scalar('Loss/gen/l1', G_losses['L1'].mean().item(), step + 1)
@@ -300,13 +308,13 @@ def train_try_on_generator(opt, train_loader,validation_loader, test_loader,boar
             board.add_scalar('real_composition_loss_disc', D_losses['D_Real'].mean().item(), step + 1)
             if wandb is not None:
                 my_table = wandb.Table(columns=['Image', 'Pose Image','Parse Clothing','Parse Clothing Mask','Warped Cloth','Warped Cloth Mask','Composition' ])
-                image_wandb = get_wandb_image((im_c[0].cpu() / 2 + 0.5),wandb) # 'Image'
+                image_wandb = get_wandb_image((im[0].cpu() / 2 + 0.5),wandb) # 'Image'
                 pose_image_wandb = get_wandb_image((openpose[0].cpu() / 2 + 0.5),wandb) # 'Pose Image'
-                parse_clothing_wandb = get_wandb_image((im_c[0].cpu() / 2 + 0.5), wandb) # 'Parse Clothing'
-                parse_clothing_mask_wandb = get_wandb_image(parse_cloth_mask[0].cpu().expand(3, -1, -1), wandb) # 'Parse Clothing Mask'
+                parse_clothing_wandb = get_wandb_image((parse_cloth[0].cpu() / 2 + 0.5), wandb) # 'Parse Clothing'
+                parse_clothing_mask_wandb = get_wandb_image(pcm[0].cpu().expand(3, -1, -1), wandb) # 'Parse Clothing Mask'
                 warped_cloth_wandb = get_wandb_image((warped_cloth_paired[0].cpu().detach() / 2 + 0.5), wandb) # 'Warped Cloth'
                 warped_clothmask_paired_wandb = get_wandb_image((warped_clothmask_paired[0].cpu().detach()).expand(3, -1, -1), wandb) # 'Warped Cloth Mask'
-                out_wandb = get_wandb_image(output_paired, wandb) # 'Composition'
+                out_wandb = get_wandb_image(out, wandb) # 'Composition'
                 my_table.add_data(image_wandb, pose_image_wandb, parse_clothing_wandb, parse_clothing_mask_wandb, warped_cloth_wandb,warped_clothmask_paired_wandb,out_wandb)
                 wandb.log({'Table': my_table, 'composition_loss': loss_gen.item()
                 ,'gan_composition_loss':G_losses['GAN'].mean().item()
@@ -447,6 +455,7 @@ def validate_gen(opt, step, generator,discriminator, tocg,gauss,model, criterion
             agnostic = inputs['agnostic'].cuda()
             parse_GT = inputs['parse'].cuda()
             pose = inputs['densepose'].cuda()
+            openpose = inputs['pose'].cuda()
             parse_cloth = inputs['parse_cloth'].cuda()
             parse_agnostic = inputs['parse_agnostic'].cuda()
             pcm = inputs['pcm'].cuda()
@@ -575,23 +584,30 @@ def validate_gen(opt, step, generator,discriminator, tocg,gauss,model, criterion
                                     (output_paired[i].cpu() / 2 + 0.5), (im[i].cpu() / 2 + 0.5)],
                                     nrow=4)
             out = output_paired[i].cpu() / 2 + 0.5
-            board.add_images('train_images', grid.unsqueeze(0), step + 1)
-            board.add_scalar('val_composition_loss', loss_gen.item(), step + 1)
-            board.add_scalar('val_gan_composition_loss', G_losses['GAN'].mean().item(), step + 1)
+            board.add_images('Val/images', grid.unsqueeze(0), step + 1)
+            board.add_image('Val/Image', (im[0].cpu() / 2 + 0.5), 0)
+            board.add_image('Val/Pose Image', (openpose[0].cpu() / 2 + 0.5), 0)
+            board.add_image('Val/Parse Clothing', (parse_cloth[0].cpu() / 2 + 0.5), 0)
+            board.add_image('Val/Parse Clothing Mask', pcm[0].cpu().expand(3, -1, -1), 0)
+            board.add_image('Val/Warped Cloth', (warped_cloth_paired[0].cpu().detach() / 2 + 0.5), 0)
+            board.add_image('Val/Warped Cloth Mask', warped_clothmask_paired[0].cpu().detach().expand(3, -1, -1), 0)
+            board.add_image('Val/Composition', out, 0)
+            board.add_scalar('Val/composition_loss', loss_gen.item(), step + 1)
+            board.add_scalar('Val/gan_composition_loss', G_losses['GAN'].mean().item(), step + 1)
             #board.add_scalar('Loss/gen/l1', G_losses['L1'].mean().item(), step + 1)
-            board.add_scalar('val_feat_composition_loss', G_losses['GAN_Feat'].mean().item(), step + 1)
-            board.add_scalar('val_vgg_composition_loss', G_losses['VGG'].mean().item(), step + 1)
+            board.add_scalar('Val/feat_composition_loss', G_losses['GAN_Feat'].mean().item(), step + 1)
+            board.add_scalar('Val/vgg_composition_loss', G_losses['VGG'].mean().item(), step + 1)
             if wandb is not None:
                 my_table = wandb.Table(columns=['Image', 'Pose Image','Parse Clothing','Parse Clothing Mask','Warped Cloth','Warped Cloth Mask','Composition' ])
-                image_wandb = get_wandb_image((im_c[0].cpu() / 2 + 0.5),wandb) # 'Image'
+                image_wandb = get_wandb_image((im[0].cpu() / 2 + 0.5),wandb) # 'Image'
                 pose_image_wandb = get_wandb_image((openpose[0].cpu() / 2 + 0.5),wandb) # 'Pose Image'
-                parse_clothing_wandb = get_wandb_image((im_c[0].cpu() / 2 + 0.5), wandb) # 'Parse Clothing'
-                parse_clothing_mask_wandb = get_wandb_image(parse_cloth_mask[0].cpu().expand(3, -1, -1), wandb) # 'Parse Clothing Mask'
+                parse_clothing_wandb = get_wandb_image((parse_cloth[0].cpu() / 2 + 0.5), wandb) # 'Parse Clothing'
+                parse_clothing_mask_wandb = get_wandb_image(pcm[0].cpu().expand(3, -1, -1), wandb) # 'Parse Clothing Mask'
                 warped_cloth_wandb = get_wandb_image((warped_cloth_paired[0].cpu().detach() / 2 + 0.5), wandb) # 'Warped Cloth'
                 warped_clothmask_paired_wandb = get_wandb_image((warped_clothmask_paired[0].cpu().detach()).expand(3, -1, -1), wandb) # 'Warped Cloth Mask'
-                out_wandb = get_wandb_image(output_paired, wandb) # Composition
+                out_wandb = get_wandb_image(out, wandb) # Composition
                 my_table.add_data(image_wandb, pose_image_wandb, parse_clothing_wandb, parse_clothing_mask_wandb, warped_cloth_wandb,warped_clothmask_paired_wandb,out_wandb)
-                wandb.log({'Table': my_table, 'val_composition_loss': loss_gen.item()
+                wandb.log({'Val_Table': my_table, 'val_composition_loss': loss_gen.item()
                 ,'val_gan_composition_loss':G_losses['GAN'].mean().item()
                 ,'val_feat_composition_loss':G_losses['GAN_Feat'].mean().item()
                 ,'val_vgg_composition_loss':G_losses['VGG'].mean().item()})
@@ -600,7 +616,7 @@ def validate_gen(opt, step, generator,discriminator, tocg,gauss,model, criterion
     avg_distance = avg_distance / 1
     print(f"LPIPS{avg_distance}")
     average_distance = avg_distance.squeeze().mean()
-    board.add_scalar('test/LPIPS', average_distance, step + 1)    
+    board.add_scalar('Val/LPIPS', average_distance, step + 1)    
     generator.train()
     
     

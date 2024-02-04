@@ -385,7 +385,7 @@ def train_batch(opt, root_opt, train_loader,gen_model, warp_model,total_steps, e
         
         writer.add_scalar('gen_loss', gen_loss, step)
 
-        loss_all = opt.lambda_loss_smooth * warp_loss + 1.0 * gen_loss
+        loss_all = 0.5 * warp_loss + 1.0 * gen_loss
         total_loss_warping += loss_all
     
         writer.add_scalar('composition_loss', loss_all, step)

@@ -86,6 +86,7 @@ class FashionNeRFDataset(data.Dataset):
         im_names = []
         transform_matrices =[]
         get_clothing_name = "_"
+        self.transform_wo_normalize = transforms.Compose([transforms.ToTensor()])
         if root_opt.dataset_name == 'Rail':
             for data_item in data_items:
                 data_string = data_item.split("/")[-1]
@@ -302,13 +303,24 @@ class FashionNeRFDataset(data.Dataset):
         densepose_map = Image.open(os.path.join(self.data_path, densepose_name))
         densepose_map = transforms.Resize(self.opt.fine_width, interpolation=2)(densepose_map)
         densepose_map = self.transform(densepose_map)  # [-1,1]
-        return densepose_map
+    
+        densepose_map_wo_normalize = self.transform_wo_normalize(Image.open(os.path.join(self.data_path, densepose_name)))
+        densepose_end_of_torso_mask = torch.FloatTensor((densepose_map_wo_normalize[1:2,:,:].cpu().numpy() == (80/ 255.)).astype(np.int)) # a channel of torso region has 80 value in a painter app.
+        densepose_end_of_torso_mask = transforms.Resize(self.fine_width, interpolation=0)(densepose_end_of_torso_mask)
+        return densepose_map, densepose_map_wo_normalize, densepose_end_of_torso_mask
     
     def get_agnostic_data(self, im_pil_big, im_parse_pil_big, pose_data):
         agnostic = self.get_agnostic(im_pil_big, im_parse_pil_big, pose_data)
         agnostic = transforms.Resize(self.opt.fine_width, interpolation=2)(agnostic)
         agnostic = self.transform(agnostic)
         return agnostic
+    
+    
+    def make_grid(self, N, iH, iW):
+        grid_x = torch.linspace(0, 1.0, iW).view(1, 1, iW, 1).expand(N, iH, -1, -1)
+        grid_y = torch.linspace(0, 1.0, iH).view(1, iH, 1, 1).expand(N, -1, iW, -1)
+        grid = torch.cat([grid_x, grid_y], 3)
+        return grid    
     
     def __getitem__(self, index):
         if self.single_person_clothing is None:
@@ -368,13 +380,28 @@ class FashionNeRFDataset(data.Dataset):
                 parse, new_parse_map, parse_onehot = self.get_parse_data(im_parse)
                 pose_map, pose_data = self.get_openpose_data(im_name)
                 parse_agnostic_map, new_parse_agnostic_map = self.get_agnostic_parse_data(im_name)    
-                densepose_map = self.get_densepose_data(im_name)
+                densepose_map, densepose_map_wo_normalize, densepose_end_of_torso_mask = self.get_densepose_data(im_name)
                 pcm = new_parse_map[3:4]
                 im_c = im * pcm + (1 - pcm) # Extract clothing Sc
                 agnostic = self.get_agnostic_data(im_pil_big, im_parse_pil_big, pose_data)
+                lower_clothes_mask = new_parse_map[4:5,:,:]
+
+                grid = self.make_grid(1, self.fine_height, self.fine_width).permute(0, 3, 1, 2)
+                grid_x, grid_y = torch.split(grid, 1, dim=1)
+                grid_y_max = (1. - densepose_end_of_torso_mask) * 0. + grid_y * densepose_end_of_torso_mask
+                grid_y_max = torch.max(grid_y_max)
+                grid_y_max_idx = grid_y_max * self.fine_height
+                grid_y_max_idx = int(grid_y_max_idx)
+
+                clothes_no_loss_mask = torch.zeros_like(densepose_end_of_torso_mask)
+                clothes_no_loss_mask[:, :grid_y_max_idx, :] = 1
                 result.update({
                     'im_name':im_name.replace("image/",""),'agnostic': agnostic, 'parse_agnostic': new_parse_agnostic_map, 'densepose': densepose_map, 'pose': pose_map,  # for conditioning
-                    'parse_onehot': parse_onehot, 'parse': new_parse_map, 'pcm': pcm, 'parse_cloth': im_c,'image': im })
+                    'parse_onehot': parse_onehot, 'parse': new_parse_map, 'pcm': pcm, 'parse_cloth': im_c,'image': im, 
+                    # masks for a masked loss
+                    'lower_clothes_mask': lower_clothes_mask,
+                    'clothes_no_loss_mask': clothes_no_loss_mask
+                    })
 
             return result
         else:
@@ -387,16 +414,29 @@ class FashionNeRFDataset(data.Dataset):
             parse, new_parse_map, parse_onehot = self.get_parse_data(im_parse)
             pose_map, pose_data = self.get_openpose_data(person_filename)
             parse_agnostic_map, new_parse_agnostic_map = self.get_agnostic_parse_data(person_filename)    
-            densepose_map = self.get_densepose_data(person_filename, remove_artifacts = True)
+            densepose_map, densepose_map_wo_normalize, densepose_end_of_torso_mask = self.get_densepose_data(person_filename, remove_artifacts = True)
             pcm = new_parse_map[3:4]
             im_c = im * pcm + (1 - pcm) # Extract clothing Sc
             agnostic = self.get_agnostic_data(im_pil_big, im_parse_pil_big, pose_data)
+            # masks for a masked loss
+            lower_clothes_mask = new_parse_map[4:5,:,:]
+
+            grid = self.make_grid(1, self.fine_height, self.fine_width).permute(0, 3, 1, 2)
+            grid_x, grid_y = torch.split(grid, 1, dim=1)
+            grid_y_max = (1. - densepose_end_of_torso_mask) * 0. + grid_y * densepose_end_of_torso_mask
+            grid_y_max = torch.max(grid_y_max)
+            grid_y_max_idx = grid_y_max * self.fine_height
+            grid_y_max_idx = int(grid_y_max_idx)
+
+            clothes_no_loss_mask = torch.zeros_like(densepose_end_of_torso_mask)
+            clothes_no_loss_mask[:, :grid_y_max_idx, :] = 1
             result = {
                 'c_name': clothing_filename, 'cloth': clothing, 'cloth_mask': clothing_mask,  # for input
                 'im_name': person_filename,  'image': person,'H': self.H,'W': self.W,'K': K,
                 'agnostic': agnostic, 'parse_agnostic': new_parse_agnostic_map, 
                 'densepose': densepose_map,  'pose': pose_map, 'parse_onehot': parse_onehot,
-                'parse': new_parse_map, 'pcm': pcm, 'parse_cloth': im_c
+                'parse': new_parse_map, 'pcm': pcm, 'parse_cloth': im_c,'lower_clothes_mask': lower_clothes_mask,
+                    'clothes_no_loss_mask': clothes_no_loss_mask
                 }
             return result
 

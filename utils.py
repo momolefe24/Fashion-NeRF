@@ -349,6 +349,8 @@ def parse_arguments():
     parser.add_argument("--clothmask_composition", type=str, choices=['no_composition', 'detach', 'warp_grad'], default='warp_grad')
     parser.add_argument('--edgeawaretv', type=str, choices=['no_edge', 'last_only', 'weighted'], default="no_edge", help="Edge aware TV loss")
     parser.add_argument('--add_lasttv', action='store_true')
+    parser.add_argument('--tvlambda_tvob', type=float, default=2)
+    parser.add_argument('--tvlambda_taco', type=float, default=2)
     
     parser.add_argument('--G_lr', type=float, default=0.0002, help='Generator initial learning rate for adam')
     parser.add_argument('--D_lr', type=float, default=0.0002, help='Discriminator initial learning rate for adam')
@@ -358,9 +360,12 @@ def parse_arguments():
     parser.add_argument('--upsample', type=str, default='bilinear', choices=['nearest', 'bilinear'])
     parser.add_argument('--spectral', action='store_true', help="Apply spectral normalization to D")
     parser.add_argument('--occlusion', action='store_true', help="Occlusion handling")
+    parser.add_argument('--cond_G_ngf', type=int, default=96)
+    parser.add_argument('--cond_G_num_layers', type=int, default=5)
     parser.add_argument("--test_datasetting", default="unpaired")
     parser.add_argument("--test_dataroot", default="./data/")
     parser.add_argument('--fp16',type=bool, default=False, help='use amp')
+    parser.add_argument('--composition_mask',type=bool, default=True)
     parser.add_argument("--test_data_list", default="test_pairs.txt")
     parser.add_argument('--num_upsampling_layers', choices=['normal', 'more', 'most'], default='most',
                     help='If \'more\', add upsampling layer between the two middle resnet blocks. '
