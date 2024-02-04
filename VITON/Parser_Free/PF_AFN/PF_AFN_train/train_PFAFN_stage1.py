@@ -184,8 +184,6 @@ def process_opt(opt, root_opt):
     parser = get_root_opt_checkpoint_dir(parser, root_opt)
     parser, root_opt = get_root_opt_results_dir(parser, root_opt)    
     parser = copy_root_opt_to_opt(parser, root_opt)
-    
-
     return parser, root_opt
 
 def train_pfafn_pf_warp_(opt_, root_opt_, run_wandb=False, sweep=None):
@@ -196,11 +194,11 @@ def train_pfafn_pf_warp_(opt_, root_opt_, run_wandb=False, sweep=None):
         import wandb 
         wandb.login()
         sweep_id = wandb.sweep(sweep=sweep, project="Fashion-NeRF-Sweep")
-        wandb.agent(sweep_id,_train_pfafn_pf_warp_sweep,count=5)
+        wandb.agent(sweep_id,_train_pfafn_pf_warp_sweep,count=3)
     elif run_wandb:
         import wandb
         wandb.login()
-        wandb.init(project="Fashion-NeRF", entity='prime_lab', notes=f"question: {opt.question}, intent: {opt.intent}", tags=[f"{root_opt.experiment_run}"], config=vars(opt))
+        wandb.init(project="Fashion-NeRF", entity='rail_lab', tags=[f"{root_opt.experiment_run}"], config=vars(opt))
         temp_opt = vars(opt)
         temp_opt['wandb_name'] = wandb.run.name
         opt = argparse.Namespace(**temp_opt)
@@ -212,7 +210,7 @@ def train_pfafn_pf_warp_(opt_, root_opt_, run_wandb=False, sweep=None):
     
 def _train_pfafn_pf_warp_sweep():
     if wandb is not None:
-        with wandb.init(project="Fashion-NeRF-Sweep", entity='prime_lab', notes=f"question: {opt.question}, intent: {opt.intent}", tags=[f"{root_opt.experiment_run}"], config=vars(opt)):
+        with wandb.init(project="Fashion-NeRF-Sweep", entity='rail_lab', tags=[f"{root_opt.experiment_run}"], config=vars(opt)):
             _train_pfafn_pf_warp_()
             
             
@@ -230,29 +228,36 @@ def select_device(device='', batch_size=0):
         arg = f'cuda:{device}'
     else:  # revert to CPU
         arg = 'cpu'
-
-    # return torch.device(arg)
     return arg
 
+
+def make_dirs(opt):
+    if not os.path.exists(opt.pf_warp_save_step_checkpoint_dir):
+        os.makedirs(opt.pf_warp_save_step_checkpoint_dir)
+    if not os.path.exists(os.path.join(opt.results_dir, 'val')):
+        os.makedirs(os.path.join(opt.results_dir, 'val'))
+    if not os.path.exists(opt.pf_warp_save_final_checkpoint_dir):
+        os.makedirs(opt.pf_warp_save_final_checkpoint_dir)
+    if not os.path.exists(opt.results_dir):
+        os.makedirs(opt.results_dir)
+        
 def _train_pfafn_pf_warp_():
     global opt, root_opt, wandb,sweep_id
+    make_dirs(opt)
+    writer = SummaryWriter(opt.tensorboard_dir)
+    device = select_device(opt.device, batch_size=opt.viton_batch_size)
+    torch.cuda.set_device(opt.device)
     if sweep_id is not None:
         opt = wandb.config
-    epoch_num = opt.niter + opt.niter_decay
-    writer = SummaryWriter(opt.tensorboard_dir)
     
     experiment_string = f"{root_opt.experiment_run.replace('/','_')}_{root_opt.opt_vton_yaml.replace('yaml/','')}"
     with open(os.path.join(root_opt.experiment_run_yaml, experiment_string), 'w') as outfile:
         yaml.dump(vars(opt), outfile, default_flow_style=False)
     
     log_path = os.path.join(opt.results_dir, 'log.txt')
-    if not os.path.exists(opt.results_dir):
-        os.makedirs(opt.results_dir)
-        with open(log_path, 'w') as file:
-            file.write(f"Hello, this is experiment {root_opt.experiment_run} \n")
+    with open(log_path, 'w') as file:
+        file.write(f"Hello, this is experiment {root_opt.experiment_run} \n")
     
-    device = select_device(opt.device, batch_size=opt.viton_batch_size)
-    torch.cuda.set_device(opt.device)
 
     start_epoch, epoch_iter = 1, 0
 
@@ -324,9 +329,6 @@ def _train_pfafn_pf_warp_():
             validate_batch(opt, root_opt, validation_loader, 
                     PB_warp_model,PF_warp_model,PB_gen_model, total_valid_steps,
                     epoch,criterionL1,criterionVGG,writer)
-        
-    if not os.path.exists(opt.pf_warp_save_final_checkpoint_dir):
-        os.makedirs(opt.pf_warp_save_final_checkpoint_dir)
     save_checkpoint(PF_warp_model, opt.pf_warp_save_final_checkpoint)
 
 
@@ -444,9 +446,9 @@ def validate_batch(opt, root_opt, validation_loader, PB_warp_model,PF_warp_model
         loss_all = opt.lambda_loss_smooth* loss_smooth + loss_all
         total_loss_warping += loss_all
 
-        writer.add_scalar('warping_loss', loss_all, epoch)
-        writer.add_scalar('loss_fea_sup_all', loss_fea_sup_all, epoch)
-        writer.add_scalar('loss_flow_sup_all', loss_flow_sup_all, epoch)
+        writer.add_scalar('val_warping_loss', loss_all, epoch)
+        writer.add_scalar('val_loss_fea_sup_all', loss_fea_sup_all, epoch)
+        writer.add_scalar('val_loss_flow_sup_all', loss_flow_sup_all, epoch)
 
         a = real_image.float().cuda()
         b = p_tryon_un.detach()
@@ -479,10 +481,8 @@ def validate_batch(opt, root_opt, validation_loader, PB_warp_model,PF_warp_model
             person_clothes_image_wandb,
             warped_clothes_image_wandb,
             warped_mask_clothes_image_wandb)
-            wandb.log({'val_warping_loss':loss_all,'val_loss_smooth':loss_smooth,'val_loss_flow_sup_all':loss_flow_sup_all,'val_l1_cloth':loss_l1,'val_loss_vgg':loss_vgg, 'val_loss_fea_sup_all':loss_fea_sup_all, 'Val_Table':my_table })
+            wandb.log({'val_warping_loss':loss_all,'val_loss_smooth':loss_smooth,'val_loss_flow_sup_all':loss_flow_sup_all,'val_warping_l1':loss_l1,'val_warping_vgg':loss_vgg, 'val_loss_fea_sup_all':loss_fea_sup_all, 'Val_Table':my_table })
         bgr = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
-        if not os.path.exists(os.path.join(opt.results_dir, 'val')):
-            os.makedirs(os.path.join(opt.results_dir, 'val'))
         cv2.imwrite(os.path.join(opt.results_dir, 'val', f"{epoch}.jpg"),bgr)
     avg_total_loss_G = total_loss_warping / len(validation_loader)
     if wandb is not None:
@@ -654,7 +654,7 @@ def train_batch(opt, root_opt, train_loader,
                 person_clothes_image_wandb,
                 warped_clothes_image_wandb,
                 warped_mask_clothes_image_wandb)
-                wandb.log({'warping_loss':loss_all,'loss_smooth':loss_smooth,'loss_flow_sup_all':loss_flow_sup_all,'l1_cloth':loss_l1,'loss_vgg':loss_vgg, 'loss_fea_sup_all':loss_fea_sup_all, 'Table':my_table })
+                wandb.log({'warping_loss':loss_all,'loss_smooth':loss_smooth,'loss_flow_sup_all':loss_flow_sup_all,'warping_l1':loss_l1,'warping_vgg':loss_vgg, 'loss_fea_sup_all':loss_fea_sup_all, 'Table':my_table })
             bgr = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
             cv2.imwrite(os.path.join(opt.results_dir, f"{step}.jpg"),bgr)
 
@@ -682,8 +682,6 @@ def train_batch(opt, root_opt, train_loader,
     # PF_warp_model, PB_warp_model, PB_gen_model,
     if epoch % opt.save_period == 0:
         print('saving the model at the end of epoch %d, iters %d' % (epoch, total_steps))
-        if not os.path.exists(opt.pf_warp_save_step_checkpoint_dir):
-            os.makedirs(opt.pf_warp_save_step_checkpoint_dir)
         save_checkpoint(PF_warp_model, opt.pf_warp_save_step_checkpoint % (epoch+1))
 
     if epoch > opt.niter:

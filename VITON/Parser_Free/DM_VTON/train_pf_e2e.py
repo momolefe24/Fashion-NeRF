@@ -40,7 +40,6 @@ def get_wandb_image(image, wandb):
     
     
 def validate_batch(opt, root_opt, data,models,criterions,device,writer,loss_lrdecay=False,wandb=None, epoch=0):
-    img_dir = os.path.join(root_opt.root_dir, root_opt.original_dir, 'val')
     pb_warp_model, pb_gen_model, pf_warp_model, pf_gen_model = (
         models['pb_warp'],
         models['pb_gen'],
@@ -49,13 +48,8 @@ def validate_batch(opt, root_opt, data,models,criterions,device,writer,loss_lrde
     )
     criterionL1, criterionVGG = criterions['L1'], criterions['VGG']
     result_dir = opt.results_dir
-    tryon_dir = os.path.join(result_dir, 'try_on')
     log_path = os.path.join(opt.results_dir, 'log.txt')
-    visualize_dir = os.path.join(result_dir, 'visualize')
     metrics = {}
-    if not os.path.exists(tryon_dir):
-        os.makedirs(tryon_dir)
-        os.makedirs(visualize_dir)
     
     if root_opt.dataset_name == 'Rail':
         t_mask = torch.FloatTensor(((data['label'] == 3) | (data['label'] == 11)).cpu().numpy().astype(np.int64))
@@ -352,7 +346,7 @@ def validate_batch(opt, root_opt, data,models,criterions,device,writer,loss_lrde
 
         torchvision.utils.save_image(
             p_tryon[j],
-            os.path.join(tryon_dir,p_name),
+            os.path.join(os.path.join(result_dir, 'try_on'),p_name),
             nrow=int(1),
             normalize=True,
             value_range=(-1, 1),
@@ -363,26 +357,22 @@ def validate_batch(opt, root_opt, data,models,criterions,device,writer,loss_lrde
         ).squeeze()
         torchvision.utils.save_image(
             combine,
-            os.path.join(visualize_dir,p_name),
+            os.path.join(os.path.join(result_dir, 'visualize'),p_name),
             nrow=int(1),
             normalize=True,
             value_range=(-1, 1),
         )
-    if not os.path.exists(str(img_dir)):
-        os.makedirs(str(img_dir))
-    fid = calculate_fid_given_paths(
-        paths=[str(img_dir), str(tryon_dir)],
-        batch_size=50,
-        device=device,
-    )
+    # fid = calculate_fid_given_paths(
+    #     paths=[str(os.path.join(root_opt.root_dir, root_opt.original_dir, 'val')), str(os.path.join(result_dir, 'try_on'))],
+    #     batch_size=50,
+    #     device=device,
+    # )
     # FID
-    metrics['fid'] = fid
+    # metrics['fid'] = fid
     # Log
     metrics_str = 'Metric, {}'.format(', '.join([f'{k}: {v}' for k, v in metrics.items()]))
     print_log(log_path, metrics_str)
     bgr = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
-    if not os.path.exists(os.path.join(opt.results_dir, 'val')):
-        os.makedirs(os.path.join(opt.results_dir, 'val'))
     cv2.imwrite(os.path.join(opt.results_dir,'val' ,f"{epoch}.jpg"), bgr)
     return loss_all.item(), loss_warp.item(), loss_gen.item(), metrics
 
@@ -713,8 +703,6 @@ def train_batch(
             wandb.log({'loss_vgg':loss_vgg,'l1_composition_loss':loss_l1,'loss_vgg_skin':loss_vgg_skin,'loss_l1_skin':loss_l1_skin,'loss_mask_l1':loss_mask_l1,'vgg_composition_loss':loss_vgg,'warping_loss':loss_warp,'loss_smooth':loss_smooth,'composition_loss': loss_all,'Table':my_table })
     
         bgr = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
-        if not os.path.exists(opt.results_dir):
-            os.makedirs(opt.results_dir)
         cv2.imwrite(os.path.join(opt.results_dir, f"{global_step}.jpg"), bgr)
 
     return loss_all.item(), loss_warp.item(), loss_gen.item(), train_batch_time
@@ -727,22 +715,45 @@ def split_dataset(dataset,train_size=0.8):
     validation_subset = Subset(dataset, validation_indices)
     return train_subset, validation_subset
 
+
+def make_dirs(opt):
+    if not os.path.exists(opt.results_dir):
+        os.makedirs(opt.results_dir)
+    if not os.path.exists(os.path.join(opt.results_dir, 'val')):
+        os.makedirs(os.path.join(opt.results_dir, 'val'))
+    if not os.path.exists(opt.pf_warp_save_final_checkpoint_dir):
+        os.makedirs(opt.pf_warp_save_final_checkpoint_dir)
+    if not os.path.exists(opt.pf_gen_save_final_checkpoint_dir):
+        os.makedirs(opt.pf_gen_save_final_checkpoint_dir)
+    if not os.path.exists(opt.pf_gen_save_step_checkpoint_dir):
+        os.makedirs(opt.pf_gen_save_step_checkpoint_dir)
+    if not os.path.exists(opt.pf_warp_save_step_checkpoint_dir):
+        os.makedirs(opt.pf_warp_save_step_checkpoint_dir)
+    if not os.path.exists(os.path.join(opt.result_dir, 'try_on')):
+        os.makedirs(os.path.join(opt.result_dir, 'try_on'))
+    if not os.path.join(opt.result_dir, 'visualize'):
+        os.makedirs(os.path.join(opt.result_dir, 'visualize'))
+    if not os.path.exists(opt.results_dir):
+        os.makedirs(opt.results_dir)
+    if not os.path.exists(os.path.join(root_opt.root_dir, root_opt.original_dir, 'val')):
+        os.makedirs(os.path.join(root_opt.root_dir, root_opt.original_dir, 'val'))
+        
 def _train_pf_e2e_():
     global opt, root_opt, wandb,sweep_id
+    make_dirs(opt)
+    writer = SummaryWriter(opt.tensorboard_dir)
     if sweep_id is not None:
         opt = wandb.config
     epoch_num = opt.niter + opt.niter_decay
-    writer = SummaryWriter(opt.tensorboard_dir)
     experiment_string = f"{root_opt.experiment_run.replace('/','_')}_{root_opt.opt_vton_yaml.replace('yaml/','')}"
     with open(os.path.join(root_opt.experiment_run_yaml, experiment_string), 'w') as outfile:
         yaml.dump(vars(opt), outfile, default_flow_style=False)
 
     # Directories
     log_path = os.path.join(opt.results_dir, 'log.txt')
-    if not os.path.exists(opt.results_dir):
-        os.makedirs(opt.results_dir)
-        with open(log_path, 'w') as file:
-            file.write(f"Hello, this is experiment {root_opt.experiment_run} \n")
+
+    with open(log_path, 'w') as file:
+        file.write(f"Hello, this is experiment {root_opt.experiment_run} \n")
 
     # Device
     device = select_device(opt.device, batch_size=opt.viton_batch_size)
@@ -950,29 +961,21 @@ def _train_pf_e2e_():
             'optimizer': gen_optimizer.state_dict(),
         }
         if root_opt.validate and best_fid == fid:
-            if not os.path.exists(opt.pf_warp_save_final_checkpoint_dir):
-                os.makedirs(opt.pf_warp_save_final_checkpoint_dir)
             torch.save(warp_ckpt, opt.pf_warp_save_final_checkpoint)
             
-            if not os.path.exists(opt.pf_gen_save_final_checkpoint_dir):
-                os.makedirs(opt.pf_gen_save_final_checkpoint_dir)
             torch.save(gen_ckpt, opt.pf_gen_save_final_checkpoint)
             print_log(
                 log_path,
                 'Save best with fid %.3f at epoch %d, iters %d' % (fid, epoch, global_step - 1),
             )
         if epoch % opt.save_period == 0:
-            if not os.path.exists(opt.pf_warp_save_step_checkpoint_dir):
-                os.makedirs(opt.pf_warp_save_step_checkpoint_dir)
             torch.save(warp_ckpt, opt.pf_warp_save_step_checkpoint % epoch)
-            if not os.path.exists(opt.pf_gen_save_step_checkpoint_dir):
-                os.makedirs(opt.pf_gen_save_step_checkpoint_dir)
             torch.save(gen_ckpt, opt.pf_gen_save_step_checkpoint % epoch)
             print_log(
                 log_path,
                 'Save the model at the end of epoch %d, iters %d' % (epoch, global_step - 1),
             )
-        del warp_ckpt, gen_ckpt
+        # del warp_ckpt, gen_ckpt
 
         print_log(
             log_path,
@@ -1179,11 +1182,11 @@ def train_pf_e2e_(opt_, root_opt_, run_wandb=False, sweep=None):
         import wandb 
         wandb.login()
         sweep_id = wandb.sweep(sweep=sweep, project="Fashion-NeRF-Sweep")
-        wandb.agent(sweep_id,_train_pf_e2e__sweep,count=5)
+        wandb.agent(sweep_id,_train_pf_e2e__sweep,count=3)
     elif run_wandb:
         import wandb
         wandb.login()
-        wandb.init(project="Fashion-NeRF", entity='prime_lab', notes=f"question: {opt.question}, intent: {opt.intent}", tags=[f"{root_opt.experiment_run}"], config=vars(opt))
+        wandb.init(project="Fashion-NeRF", entity='rail_lab', notes=f"intent: {opt.intent}", tags=[f"{root_opt.experiment_run}"], config=vars(opt))
         temp_opt = vars(opt)
         temp_opt['wandb_name'] = wandb.run.name
         opt = argparse.Namespace(**temp_opt)
@@ -1194,6 +1197,6 @@ def train_pf_e2e_(opt_, root_opt_, run_wandb=False, sweep=None):
 
 def _train_pf_e2e__sweep():
     if wandb is not None:
-        with wandb.init(project="Fashion-NeRF-Sweep", entity='prime_lab', notes=f"question: {opt.question}, intent: {opt.intent}", tags=[f"{root_opt.experiment_run}"], config=vars(opt)):
+        with wandb.init(project="Fashion-NeRF-Sweep", entity='rail_lab', notes=f"intent: {opt.intent}", tags=[f"{root_opt.experiment_run}"], config=vars(opt)):
             _train_pf_e2e_()
     

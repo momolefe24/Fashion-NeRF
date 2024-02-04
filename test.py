@@ -1,3 +1,4 @@
+import subprocess
 """ ------------------ ACGPN------------------"""
 def test_acgpn(opt, root_opt):
     from VITON.Parser_Based.ACGPN.ACGPN_inference.test import test_acgpn_
@@ -31,14 +32,15 @@ def test_pfafn(opt, root_opt, VITON_Model):
 
 def test_hrviton(opt, root_opt, VITON_Model):
     from VITON.Parser_Based.HR_VITON.test_condition import test_hrviton_tocg_
-    from VITON.Parser_Based.HR_VITON.test_generator import test_tryon_
+    from VITON.Parser_Based.HR_VITON.test_generator import test_hrviton_gen_
     if VITON_Model == 'TOCG':
         test_hrviton_tocg_(opt, root_opt)    
     elif VITON_Model == 'GEN':
-        test_tryon_(opt, root_opt)
+        test_hrviton_gen_(opt, root_opt)
 
-def test_ladi_vton(opt, root_opt, VITON_Model):
-    pass
+def test_ladi_vton(opt, root_opt):
+    from VITON.Parser_Based.Ladi_VTON.src.inference import test_inference
+    test_inference(opt, root_opt)
         
 def test_viton(opt, root_opt,VITON_Name, VITON_Model):
     if VITON_Name == 'HR_VITON':
@@ -50,9 +52,10 @@ def test_viton(opt, root_opt,VITON_Name, VITON_Model):
     elif VITON_Name == 'PF_AFN':
         test_pfafn(opt, root_opt,VITON_Model)
     elif VITON_Name == 'CP_VTON':
-        test_cp_vton(opt, root_opt,VITON_Model)
+        test_cp_vton(opt, root_opt)
     elif VITON_Name == 'CP_VTON_plus':
-        test_cp_vton_plus(opt, root_opt,VITON_Model)
-             
+        test_cp_vton_plus(opt, root_opt)
+    elif VITON_Name == 'Ladi_VITON':
+        test_ladi_vton(opt, root_opt)
         
         

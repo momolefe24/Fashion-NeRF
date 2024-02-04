@@ -92,7 +92,8 @@ def test(opt, test_loader, tocg, D=None):
                     name = inputs['c_name']['paired'][i].replace('.jpg', '.png')
                     D_score.append((name, score[i].item()))
             
-            
+            if opt.clip_warping:
+                warped_cloth_paired = warped_cloth_paired * parse_cloth_mask + torch.ones_like(warped_cloth_paired) * (1 - parse_cloth_mask)
             # generated fake cloth mask & misalign mask
             fake_clothmask = (torch.argmax(fake_segmap.detach(), dim=1, keepdim=True) == 3).long()
             misalign = fake_clothmask - warped_cm_onehot

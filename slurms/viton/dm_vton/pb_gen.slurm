@@ -64,5 +64,5 @@ echo "Dataset Name: $DATASET_NAME"
     --warp_experiment_from_number 0 --warp_run_from_number 0 --warp_load_from_model Original \
     --gen_experiment_from_number 0 --gen_run_from_number 0 --gen_load_from_model Original \
     --dataset_name $DATASET_NAME --device 0 --load_last_step False --run_wandb $WANDB \
-    --niter 1 --niter_decay 1 --display_count 1 --print_step 1 --save_period 1 --val_count 1 \
+    --niter 50 --niter_decay 50 --display_count 10 --print_step 10 --save_period 10 --val_count 10 \
     --viton_batch_size 4 --datamode $DATAMODE --debug $DEBUG --sweeps $SWEEPS --seed $SEED

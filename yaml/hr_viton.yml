@@ -27,8 +27,8 @@ low_res_viton_dataset_name: "VITON-Clean"
 dataset_name: "Original"
 test_dataroot: /data/
 test_data_list: test_pairs.txt
-fine_width: 192 # [tocg: 192, gen: 768]
-fine_height: 256 # [tocg: 256, gen: 1024]
+fine_width: 768 # [tocg: 192, gen: 768]
+fine_height: 1024 # [tocg: 256, gen: 1024]
 
 # ========================= VITON information
 VITON_Type: "Parser_Based"
@@ -37,8 +37,8 @@ VITON_Name: "HR_VITON"
 # ========================= Directory
 rail_dir: "data/VITON/{}/processed/{}/{}"
 original_dir: "data/VITON/{}/processed/{}/{}"
-#root_dir: "/home-mscluster/mmolefe/Playground/Synthesising Virtual Fashion Try-On with Neural Radiance Fields/Fashion-SuperNeRF"
-root_dir: '/mnt/data/home/molefe/Playground/Synthesising Virtual Fashion Try-On with Neural Radiance Fields/Fashion-NeRF'
+root_dir: "/home-mscluster/mmolefe/Playground/Synthesising Virtual Fashion Try-On with Neural Radiance Fields/Fashion-SuperNeRF"
+# root_dir: '/mnt/data/home/molefe/Playground/Synthesising Virtual Fashion Try-On with Neural Radiance Fields/Fashion-NeRF'
 checkpoint_root_dir: "/gluster/mmolefe"
 dataset_root_dir: "/datasets/mmolefe"
 tensorboard_dir: "./tensorboard/{}/{}"
@@ -63,9 +63,9 @@ tocg_discriminator_save_step_checkpoint: "discriminator_mtviton_%06d.pth"
 tocg_discriminator_load_step_checkpoint_dir: "/checkpoints/{}/{}/steps"
 tocg_discriminator_load_step_checkpoint: "discriminator_mtviton_%06d.pth"
 tocg_discriminator_save_final_checkpoint_dir: "/checkpoints/{}/{}"
-tocg_discriminator_save_final_checkpoint: "discriminator_mtviton.pth"
+tocg_discriminator_save_final_checkpoint: "tocg_discriminator.pt"
 tocg_discriminator_load_final_checkpoint_dir: "/checkpoints/{}/{}"
-tocg_discriminator_load_final_checkpoint: "discriminator_mtviton.pth"
+tocg_discriminator_load_final_checkpoint: "tocg_discriminator.pt"
 tocg_discriminator_load_from_model: Rail
 
 # ========================== GEN
@@ -120,7 +120,7 @@ no_GAN_loss: False
 lasttvonly: True
 interflowloss: True
 clothmask_composition: warp_grad # ['no_composition', 'detach', 'warp_grad']
-segment_anything: True
+segment_anything: False
 flow_self_attention: False
 flow_spatial_attention: False
 flow_channel_attention: true
@@ -149,7 +149,7 @@ no_ganFeat_loss: False
 no_vgg_loss: False
 ndf: 64
 norm_const: 1
-clip_warping: false
+clip_warping: True
 init_variance: 0.02
 lambda_l1: 1.0
 lambda_vgg: 10.0

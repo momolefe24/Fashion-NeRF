@@ -248,9 +248,7 @@ class AFWM(nn.Module):
     def forward(self, cond_input, image_input, image_edge):
         cond_pyramids = self.cond_FPN(self.cond_features(cond_input)) # maybe use nn.Sequential
         image_pyramids = self.image_FPN(self.image_features(image_input))
-
         x_warp, last_flow, last_flow_all, flow_all, delta_list, x_all, x_edge_all, delta_x_all, delta_y_all = self.aflow_net(image_input, image_edge, image_pyramids, cond_pyramids)
-
         return x_warp, last_flow, last_flow_all, flow_all, delta_list, x_all, x_edge_all, delta_x_all, delta_y_all
 
 

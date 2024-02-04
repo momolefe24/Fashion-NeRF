@@ -1,5 +1,5 @@
 # =====================  Sweep Hyperparameters
-program: train_pb_warp.py  # Replace with your actual training script
+program: train_PBAFN_stage1.py  # Replace with your actual training script
 method: bayes  # Can be grid, random, or bayes
 metric:
   name: val_warping_loss  # Replace with the metric you want to optimize, e.g., validation loss
@@ -9,6 +9,9 @@ parameters:
     min: 1
     max: 5
   lambda_loss_vgg:
+    min: 0.1
+    max: 1.0
+  lambda_loss_vgg_skin:
     min: 0.1
     max: 1.0
   lambda_loss_edge:
@@ -35,6 +38,12 @@ parameters:
   lambda_warp_sup_loss:
     min: 0.02
     max: 0.06
+  lambda_loss_l1_skin:
+    min: 30 
+    max: 60
+  lambda_loss_l1_mask:
+    min: 1
+    max: 3
   align_corners:
     values: [true, false]
   optimizer:

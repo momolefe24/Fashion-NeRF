@@ -62,13 +62,13 @@ def train_ladi_vton(opt, root_opt, run_wandb, sweeps, VITON_Model):
         
 def train_viton(opt, root_opt, run_wandb, sweeps,VITON_Name, VITON_Model):
     if VITON_Name == 'HR_VITON':
-        train_hrviton(opt, root_opt, run_wandb, sweeps,VITON_Name, VITON_Model)
+        train_hrviton(opt, root_opt, run_wandb, sweeps, VITON_Model)
     elif VITON_Name == 'ACGPN':
-        train_acgpn(opt, root_opt, run_wandb, sweeps,VITON_Name, VITON_Model)
+        train_acgpn(opt, root_opt, run_wandb, sweeps, VITON_Model)
     elif VITON_Name == 'DM_VTON':
-        train_dmvton(opt, root_opt, run_wandb, sweeps,VITON_Name, VITON_Model)
+        train_dmvton(opt, root_opt, run_wandb, sweeps, VITON_Model)
     elif VITON_Name == 'PF_AFN':
-        train_pfafn(opt, root_opt, run_wandb, sweeps,VITON_Name, VITON_Model)
+        train_pfafn(opt, root_opt, run_wandb, sweeps, VITON_Model)
     elif VITON_Name == 'CP_VTON':
         train_cp_vton(opt, root_opt, run_wandb, sweeps)
     elif VITON_Name == 'CP_VTON_plus':

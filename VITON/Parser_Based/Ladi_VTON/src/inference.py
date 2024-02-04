@@ -7,6 +7,9 @@ import torch
 import torch.nn.functional as F
 import torch.utils.checkpoint
 import torchvision
+# import subprocess
+# command = "source ~/.bashrc && conda activate ladi-vton && conda env list | grep ladi"
+# subprocess.run(command, shell=True, executable='/bin/bash')
 from accelerate import Accelerator
 from diffusers import DDIMScheduler
 from diffusers.utils import check_min_version
@@ -14,14 +17,14 @@ from diffusers.utils.import_utils import is_xformers_available
 from tqdm import tqdm
 from transformers import CLIPTextModel, CLIPTokenizer, CLIPVisionModelWithProjection, AutoProcessor
 
-from dataset.dresscode import DressCodeDataset
-from dataset.vitonhd import VitonHDDataset
-from models.AutoencoderKL import AutoencoderKL
-from src.utils.encode_text_word_embedding import encode_text_word_embedding
-from utils.set_seeds import set_seed
-from utils.val_metrics import compute_metrics
-from vto_pipelines.tryon_pipe import StableDiffusionTryOnePipeline
-
+from VITON.Parser_Based.Ladi_VTON.src.dataset.dresscode import DressCodeDataset
+from VITON.Parser_Based.Ladi_VTON.src.dataset.vitonhd import VitonHDDataset
+from VITON.Parser_Based.Ladi_VTON.src.models.AutoencoderKL import AutoencoderKL
+from VITON.Parser_Based.Ladi_VTON.src.utils.encode_text_word_embedding import encode_text_word_embedding
+from VITON.Parser_Based.Ladi_VTON.src.utils.set_seeds import set_seed
+from VITON.Parser_Based.Ladi_VTON.src.utils.val_metrics import compute_metrics
+from VITON.Parser_Based.Ladi_VTON.src.vto_pipelines.tryon_pipe import StableDiffusionTryOnePipeline
+fix = lambda path: os.path.normpath(path)
 PROJECT_ROOT = Path(__file__).absolute().parents[1].absolute()
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
@@ -29,81 +32,18 @@ check_min_version("0.10.0.dev0")
 
 # --dataset vitonhd --vitonhd_dataroot ../data/viton --output_dir ../output --test_order paired --category upper_body --mixed_precision no --enable_xformers_memory_efficient_attention --use_png --compute_metrics
 
-def parse_args():
-    parser = argparse.ArgumentParser(description="Full inference script")
+# @torch.inference_mode()
 
-    parser.add_argument(
-        "--pretrained_model_name_or_path",
-        type=str,
-        default="stabilityai/stable-diffusion-2-inpainting",
-        help="Path to pretrained model or model identifier from huggingface.co/models.",
-    )
-
-    parser.add_argument(
-        "--output_dir",
-        default="output",
-        type=str,
-        
-        help="Path to the output directory",
-    )
-
-    parser.add_argument(
-        "--allow_tf32",
-        action="store_true",
-        help=(
-            "Whether or not to allow TF32 on Ampere GPUs. Can be used to speed up training. For more information, see"
-            " https://pytorch.org/docs/stable/notes/cuda.html#tensorfloat-32-tf32-on-ampere-devices"
-        ),
-    )
-
-    parser.add_argument("--seed", type=int, default=1234, help="A seed for reproducible training.")
-    parser.add_argument("--batch_size", type=int, default=8, help="Batch size to use.")
-
-    parser.add_argument(
-        "--mixed_precision",
-        type=str,
-        default=None,
-        choices=["no", "fp16", "bf16"],
-        help=(
-            "Whether to use mixed precision. Choose between fp16 and bf16 (bfloat16). Bf16 requires PyTorch >="
-            " 1.10.and an Nvidia Ampere GPU.  Default to the value of accelerate config of the current system or the"
-            " flag passed with the `accelerate.launch` command. Use this argument to override the accelerate config."
-        ),
-    )
-
-    parser.add_argument(
-        "--enable_xformers_memory_efficient_attention", action="store_true", help="Whether or not to use xformers."
-    )
-
-    parser.add_argument('--dresscode_dataroot', type=str, help='DressCode dataroot')
-    parser.add_argument('--vitonhd_dataroot', default="../data/viton", type=str, help='VitonHD dataroot')
-
-    parser.add_argument("--num_workers", type=int, default=4, help="Number of workers for the dataloader")
-
-    parser.add_argument("--num_vstar", default=16, type=int, help="Number of predicted v* images to use")
-    parser.add_argument("--test_order", default="unpaired", type=str,  choices=["unpaired", "paired"])
-    parser.add_argument("--dataset", default="vitonhd", type=str,  choices=["dresscode", "vitonhd"], help="dataset to use")
-    parser.add_argument("--category", default="upper_body", type=str, choices=['all', 'lower_body', 'upper_body', 'dresses'])
-    parser.add_argument("--use_png", default=False, action="store_true", help="Whether to use png or jpg for saving")
-    parser.add_argument("--num_inference_steps", default=50, type=int, help="Number of diffusion steps")
-    parser.add_argument("--guidance_scale", default=7.5, type=float, help="Guidance scale")
-    parser.add_argument("--compute_metrics", default=False, action="store_true",
-                        help="Compute metrics after generation")
-
-    args = parser.parse_args()
-    env_local_rank = int(os.environ.get("LOCAL_RANK", -1))
-    if env_local_rank != -1 and env_local_rank != args.local_rank:
-        args.local_rank = env_local_rank
-
-    return args
-
-
-@torch.inference_mode()
-def main():
-    args = parse_args()
+def test_inference(opt, root_opt):
+    print("Start to test %s!")
+    inference(opt, root_opt)
+    
+def inference(args, root_opt):
+    args = argparse.Namespace(**args)
     # Check if the dataset dataroot is provided
-    if args.dataset == "vitonhd" and args.vitonhd_dataroot is None:
-        raise ValueError("VitonHD dataroot must be provided")
+    if args.dataset == "vitonhd":
+        pass
+        # raise ValueError("VitonHD dataroot must be provided")
     if args.dataset == "dresscode" and args.dresscode_dataroot is None:
         raise ValueError("DressCode dataroot must be provided")
 
@@ -154,33 +94,26 @@ def main():
         category = ['dresses', 'upper_body', 'lower_body']
 
     outputlist = ['image', 'pose_map', 'inpaint_mask', 'im_mask', 'category', 'im_name', 'cloth']
-    if args.dataset == "dresscode":
-        test_dataset = DressCodeDataset(
-            dataroot_path=args.dresscode_dataroot,
-            phase='test',
-            order=args.test_order,
-            radius=5,
-            outputlist=outputlist,
-            category=category,
-            size=(512, 384)
-        )
-    elif args.dataset == "vitonhd":
-        test_dataset = VitonHDDataset(
-            dataroot_path=args.vitonhd_dataroot,
-            phase='test',
-            order=args.test_order,
-            radius=5,
-            outputlist=outputlist,
-            size=(512, 384),
-        )
+    dataroot = os.path.join(root_opt.root_dir, root_opt.original_dir)
+    if args.dataset == "vitonhd":
+        test_dataset = VitonHDDataset(args, root_opt, phase='test',
+                                       outputlist=outputlist,
+                                       dataroot_path=dataroot,
+                                       size=(args.height, args.width))
+    elif args.dataset == "dresscode":
+        test_dataset = DressCodeDataset(dataroot_path=args.dresscode_dataroot,
+                                         phase='test',
+                                         outputlist=outputlist,
+                                         size=(args.height, args.width))
     else:
         raise NotImplementedError(f"Dataset {args.dataset} not implemented")
 
+    test_dataset.__getitem__(0)
     test_dataloader = torch.utils.data.DataLoader(
         test_dataset,
         shuffle=False,
         batch_size=args.batch_size,
-        num_workers=args.num_workers,
+        num_workers=1,
     )
 
     # Cast to weight_dtype
@@ -222,10 +155,12 @@ def main():
 
     # Prepare the dataloader and create the output directory
     test_dataloader = accelerator.prepare(test_dataloader)
-    save_dir = os.path.join(args.output_dir, args.test_order)
+    save_dir = os.path.join("./results")
     os.makedirs(save_dir, exist_ok=True)
     generator = torch.Generator("cuda").manual_seed(args.seed)
-
+    env_local_rank = int(os.environ.get("LOCAL_RANK", -1))
+    if env_local_rank != -1 and env_local_rank != args.local_rank:
+        args.local_rank = env_local_rank
     # Generate the images
     for idx, batch in enumerate(tqdm(test_dataloader)):
         model_img = batch.get("image").to(weight_dtype)

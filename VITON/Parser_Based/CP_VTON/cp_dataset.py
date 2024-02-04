@@ -154,8 +154,7 @@ class CPDataset(data.Dataset):
             pose_map[i] = one_map[0]
 
         # just for visualization
-        im_pose = self.transform_parse_shape(im_pose)
-        
+        im_pose = self.transform_parse_shape(im_pose)        
         # cloth-agnostic representation
         agnostic = torch.cat([shape, im_h, pose_map], 0) 
 
@@ -174,6 +173,7 @@ class CPDataset(data.Dataset):
             'image':    im,         # for visualization
             'agnostic': agnostic,   # for input
             'parse_cloth': im_c,    # for ground truth
+            'parse_cloth_mask': pcm,     # for CP-VTON, TOM input
             'shape': shape,         # for visualization
             'head': im_h,           # for visualization
             'pose_image': im_pose,  # for visualization

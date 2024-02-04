@@ -30,6 +30,7 @@ class LoadVITONDataset(Dataset):
         self.transform_parse = get_transform(
             train=(self.phase == 'train'), method=Image.NEAREST, normalize=False
         )
+        self.transform_pose_shape  = transforms.Compose([transforms.ToTensor(), transforms.Normalize((0.5,), (0.5,))])
         if phase == 'train':
             self.img_names, self.cloth_names = [], []
             if root_opt.dataset_name ==  'Rail':
@@ -162,7 +163,7 @@ class LoadVITONDataset(Dataset):
                 )
             one_map = self.transform_image(one_map.convert('RGB'))
             pose_tensor[i] = one_map[0]
-
+        im_pose = self.transform_pose_shape(im_pose)
         # Densepose
         dense_mask = np.load(
             # Path(self.dataroot) / f'{self.phase}_densepose' / f'{Path(im_name).stem}.npy'
@@ -183,6 +184,7 @@ class LoadVITONDataset(Dataset):
                 'edge_un': un_cloth_edge_tensor,
                 'label': parse_tensor,
                 'pose': pose_tensor,
+                'pose_map':im_pose,
                 'densepose': dense_tensor,
             }
         else:
