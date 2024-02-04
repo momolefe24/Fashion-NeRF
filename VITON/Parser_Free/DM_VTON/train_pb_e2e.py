@@ -240,8 +240,6 @@ def train_batch(
             my_table.add_data(wandb.Image((rgb).astype(np.uint8)), real_image_wandb,clothing_image_wandb,warped_wandb, preserve_wandb, try_on_wandb)
             wandb.log({'warping_loss':loss_warp,'l1_cloth':loss_l1,'loss_vgg':loss_vgg, 'loss_gen':loss_gen,'composition_loss': loss_all,'Table':my_table })
         bgr = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
-        if not os.path.exists(opt.results_dir):
-            os.makedirs(opt.results_dir)
         cv2.imwrite(os.path.join(opt.results_dir, f"{global_step}.jpg"), bgr)
 
     return loss_all.item(), loss_warp.item(), loss_gen.item(), train_batch_time
@@ -437,29 +435,39 @@ def validate_batch(opt, root_opt,data,models,criterions,device,writer,global_ste
         my_table.add_data(wandb.Image((rgb).astype(np.uint8)), real_image_wandb,clothing_image_wandb,warped_wandb, preserve_wandb, try_on_wandb)
         wandb.log({'val_warping_loss':loss_warp,'val_l1_cloth':loss_l1,'val_loss_vgg':loss_vgg, 'val_loss_gen':loss_gen,'val_composition_loss': loss_all,'Val_Table':my_table })
     bgr = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
-    if not os.path.exists(os.path.join(opt.results_dir, 'val')):
-        os.makedirs(os.path.join(opt.results_dir, 'val'))
     cv2.imwrite(os.path.join(opt.results_dir, 'val', f"{global_step}.jpg"), bgr)
 
     return loss_all.item(), loss_warp.item(), loss_gen.item()
 
+
+
+def make_dirs(opt):
+    if not os.path.exists(os.path.join(opt.results_dir, 'val')):
+        os.makedirs(os.path.join(opt.results_dir, 'val'))
+    if not os.path.exists(opt.results_dir):
+        os.makedirs(opt.results_dir)
+    if not os.path.exists(opt.pb_warp_save_step_checkpoint_dir):
+        os.makedirs(opt.pb_warp_save_step_checkpoint_dir)
+    if not os.path.exists(opt.pb_gen_save_step_checkpoint_dir):
+        os.makedirs(opt.pb_gen_save_step_checkpoint_dir)
+    if not os.path.exists(opt.results_dir):
+        os.makedirs(opt.results_dir)
+        
 def train_pb_e2e():
     global opt, root_opt, wandb,sweep_id
+    make_dirs(opt)
+    writer = SummaryWriter(opt.tensorboard_dir)
     if sweep_id is not None:
         opt = wandb.config
     epoch_num = opt.niter + opt.niter_decay
-    writer = SummaryWriter(opt.tensorboard_dir)
     experiment_string = f"{root_opt.experiment_run.replace('/','_')}_{root_opt.opt_vton_yaml.replace('yaml/','')}"
     with open(os.path.join(root_opt.experiment_run_yaml, experiment_string), 'w') as outfile:
         yaml.dump(vars(opt), outfile, default_flow_style=False)
 
     # Directories
     log_path = os.path.join(opt.results_dir, 'log.txt')
-    if not os.path.exists(opt.results_dir):
-        os.makedirs(opt.results_dir)
-        with open(log_path, 'w') as file:
-            file.write(f"Hello, this is experiment {root_opt.experiment_run} \n")
-
+    with open(log_path, 'w') as file:
+        file.write(f"Hello, this is experiment {root_opt.experiment_run} \n")
     # Device
     device = select_device(opt.device, batch_size=opt.viton_batch_size)
 
@@ -535,7 +543,6 @@ def train_pb_e2e():
     steps_warp_loss = 0
     steps_gen_loss = 0
     steps_loss = 0
-
     for epoch in range(start_epoch, epoch_num + 1):
         epoch_start_time = time.time()
 
@@ -642,10 +649,6 @@ def train_pb_e2e():
             'optimizer': gen_optimizer.state_dict(),
         }
         if epoch % opt.save_period == 0:
-            if not os.path.exists(opt.pb_warp_save_step_checkpoint_dir):
-                os.makedirs(opt.pb_warp_save_step_checkpoint_dir)
-            if not os.path.exists(opt.pb_gen_save_step_checkpoint_dir):
-                os.makedirs(opt.pb_gen_save_step_checkpoint_dir)
             torch.save(warp_ckpt, opt.pb_warp_save_step_checkpoint % epoch)
             torch.save(gen_ckpt, opt.pb_gen_save_step_checkpoint % epoch)
             print_log(
@@ -823,7 +826,11 @@ def process_opt(opt, root_opt):
     return parser, root_opt
 
 import yaml 
-    
+def train_pb_e2e_sweep():
+    if wandb is not None:
+        with wandb.init(project="Fashion-NeRF-Sweep", entity='rail_lab', tags=[f"{root_opt.experiment_run}"], config=vars(opt)):
+            train_pb_e2e()
+            
 def train_pb_e2e_(opt_, root_opt_, run_wandb=False, sweep=None):
     global opt, root_opt, wandb,sweep_id
     opt,root_opt = process_opt(opt_, root_opt_)
@@ -832,11 +839,11 @@ def train_pb_e2e_(opt_, root_opt_, run_wandb=False, sweep=None):
         import wandb 
         wandb.login()
         sweep_id = wandb.sweep(sweep=sweep, project="Fashion-NeRF-Sweep")
-        wandb.agent(sweep_id,train_pb_e2e_sweep,count=5)
+        wandb.agent(sweep_id,train_pb_e2e_sweep,count=3)
     elif run_wandb:
         import wandb
         wandb.login()
-        wandb.init(project="Fashion-NeRF", entity='prime_lab', notes=f"question: {opt.question}, intent: {opt.intent}", tags=[f"{root_opt.experiment_run}"], config=vars(opt))
+        wandb.init(project="Fashion-NeRF", entity='rail_lab', tags=[f"{root_opt.experiment_run}"], config=vars(opt))
         temp_opt = vars(opt)
         temp_opt['wandb_name'] = wandb.run.name
         opt = argparse.Namespace(**temp_opt)
@@ -854,7 +861,3 @@ def split_dataset(dataset,train_size=0.8):
     validation_subset = Subset(dataset, validation_indices)
     return train_subset, validation_subset
 
-def train_pb_e2e_sweep():
-    if wandb is not None:
-        with wandb.init(project="Fashion-NeRF-Sweep", entity='prime_lab', notes=f"question: {opt.question}, intent: {opt.intent}", tags=[f"{root_opt.experiment_run}"], config=vars(opt)):
-            train_pb_e2e()

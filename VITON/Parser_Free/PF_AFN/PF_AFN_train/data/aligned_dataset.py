@@ -8,12 +8,13 @@ import json
 import numpy as np
 import os.path as osp
 from PIL import ImageDraw
-
+import torchvision.transforms as transforms
 
 class AlignedDataset(BaseDataset):
     def initialize(self, opt, root_opt):
         self.opt = opt
         self.root_dir = opt.root_dir
+        self.transform_pose_shape  = transforms.Compose([transforms.ToTensor(), transforms.Normalize((0.5,), (0.5,))])                
         if opt.dataset_name == "Rail":
             self.read_data_dir = osp.join(self.root_dir, root_opt.rail_dir)
         else:
@@ -93,11 +94,18 @@ class AlignedDataset(BaseDataset):
         E_tensor = transform_A(E)
 
         index_un = np.random.randint(len(self.A_paths))
-        C_un_path = self.C_paths[index_un]
+        if self.opt.dataset_name == 'Original':
+            C_un_path = self.C_paths[index_un]
+        else:
+            C_un_path = f"{os.path.join(self.dir_C, get_clothing_name(self.A_paths[index_un]))}.jpg"
+            
         C_un = Image.open(C_un_path).convert('RGB')
         C_un_tensor = transform_B(C_un)
 
-        E_un_path = self.E_paths[index_un]
+        if self.opt.dataset_name == 'Original':
+            E_un_path = self.E_paths[index_un]
+        else:
+            E_un_path = f"{os.path.join(self.dir_E, get_clothing_name(self.A_paths[index_un]))}.jpg"
         E_un = Image.open(E_un_path).convert('L')
         E_un_tensor = transform_A(E_un)
 
@@ -134,6 +142,7 @@ class AlignedDataset(BaseDataset):
                 pose_draw.rectangle((pointx-r, pointy-r, pointx+r, pointy+r), 'white', 'white')
             one_map = transform_B(one_map.convert('RGB'))
             pose_map[i] = one_map[0]
+        im_pose = self.transform_pose_shape(im_pose)
         P_tensor=pose_map
 
         densepose_name = B_path.replace('.png', '.npy').replace('.jpg','.npy').replace('train_img','train_densepose')
@@ -166,11 +175,11 @@ class AlignedDataset(BaseDataset):
             A_tensor = self.map_labels(A_tensor, mapping)
         if self.opt.isTrain:
             input_dict = { 'name': A_path.split("/")[-1],'label': A_tensor, 'image': B_tensor, 'path': A_path, 'img_path': B_path ,'color_path': C_path,'color_un_path': C_un_path,
-                            'edge': E_tensor, 'color': C_tensor, 'edge_un': E_un_tensor, 'color_un': C_un_tensor, 'pose':P_tensor, 'densepose':dense_mask
+                            'edge': E_tensor, 'color': C_tensor, 'edge_un': E_un_tensor, 'color_un': C_un_tensor, 'pose':P_tensor,'pose_map': im_pose , 'densepose':dense_mask
                           }
         else:
             input_dict = { 'name': A_path.split("/")[-1],'label': A_tensor, 'image': B_tensor, 'path': A_path, 'img_path': B_path ,'color_path': C_path,'color_un_path': C_un_path,
-                            'edge': E_tensor, 'color': C_tensor, 'edge_un': E_un_tensor, 'color_un': C_un_tensor, 'pose':P_tensor, 'densepose':dense_mask
+                            'edge': E_tensor, 'color': C_tensor, 'edge_un': E_un_tensor, 'color_un': C_un_tensor, 'pose':P_tensor, 'pose_map': im_pose, 'densepose':dense_mask
                           }
 
         return input_dict

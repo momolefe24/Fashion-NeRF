@@ -77,6 +77,7 @@ def test(opt, test_loader, tocg, generator):
                 clothes = inputs['cloth']['paired'].cuda() # target cloth
                 densepose = inputs['densepose'].cuda()
                 im = inputs['image']
+                parse_cloth_mask = inputs['pcm'].cuda()  
                 input_label, input_parse_agnostic = label.cuda(), parse_agnostic.cuda()
                 pre_clothes_mask = torch.FloatTensor((pre_clothes_mask.detach().cpu().numpy() > 0.5).astype(np.float)).cuda()
             else :
@@ -86,6 +87,7 @@ def test(opt, test_loader, tocg, generator):
                 parse_agnostic = inputs['parse_agnostic']
                 agnostic = inputs['agnostic']
                 parse_cloth = inputs['parse_cloth']
+                parse_cloth_mask = inputs['pcm']
                 clothes = inputs['cloth']['paired'] # target cloth
                 densepose = inputs['densepose']
                 im = inputs['image']
@@ -136,7 +138,8 @@ def test(opt, test_loader, tocg, generator):
             # make generator input parse map
             fake_parse_gauss = gauss(F.interpolate(fake_segmap, size=(opt.fine_height, opt.fine_width), mode='bilinear'))
             fake_parse = fake_parse_gauss.argmax(dim=1)[:, None]
-
+            if opt.clip_warping:
+                warped_cloth_paired = warped_cloth_paired * parse_cloth_mask + torch.ones_like(warped_cloth_paired) * (1 - parse_cloth_mask)
             if opt.cuda :
                 old_parse = torch.FloatTensor(fake_parse.size(0), 13, opt.fine_height, opt.fine_width).zero_().cuda()
             else:

@@ -56,7 +56,7 @@ def init_weights(net, init_type='normal'):
 
 
 class FeatureExtraction(nn.Module):
-    def __init__(self, input_nc, ngf=64, n_layers=3, norm_layer=nn.BatchNorm2d, use_dropout=False):
+    def __init__(self, input_nc, ngf=64, n_layers=3, norm_layer=nn.BatchNorm2d, use_dropout=False, init_type='normal'):
         super(FeatureExtraction, self).__init__()
         downconv = nn.Conv2d(input_nc, ngf, kernel_size=4, stride=2, padding=1)
         model = [downconv, nn.ReLU(True), norm_layer(ngf)]
@@ -74,7 +74,7 @@ class FeatureExtraction(nn.Module):
                             stride=1, padding=1), nn.ReLU(True)]
 
         self.model = nn.Sequential(*model)
-        init_weights(self.model, init_type='normal')
+        init_weights(self.model, init_type=init_type)
 
     def forward(self, x):
         return self.model(x)
@@ -506,9 +506,9 @@ class GMM(nn.Module):
     def __init__(self, opt):
         super(GMM, self).__init__()
         self.extractionA = FeatureExtraction(
-            22, ngf=64, n_layers=3, norm_layer=nn.BatchNorm2d)
+            22, ngf=64, n_layers=3, norm_layer=nn.BatchNorm2d,init_type=opt.init_type)
         self.extractionB = FeatureExtraction(
-            1, ngf=64, n_layers=3, norm_layer=nn.BatchNorm2d)
+            1, ngf=64, n_layers=3, norm_layer=nn.BatchNorm2d,init_type=opt.init_type)
         self.l2norm = FeatureL2Norm()
         self.correlation = FeatureCorrelation()
         self.regression = FeatureRegression(

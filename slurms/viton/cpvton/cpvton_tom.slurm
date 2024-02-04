@@ -31,11 +31,11 @@ echo "Launching the script ${SLURM_JOB_NAME}"
 # export RUN_FROM_NUMBER=0
 # export SEED=1
 # export DATASET_NAME=Rail
-# export TASK="GMM"
+# export TASK="TOM"
 # export DEBUG=1
-# export SWEEPS=1
+# export SWEEPS=0
 # export DATAMODE=train
-# export WANDB=1
+# export WANDB=0
 # export DEVICE=0
 # export VITON_NAME=CP_VTON
 
@@ -51,5 +51,5 @@ echo "Dataset Name: $DATASET_NAME"
   --VITON_Type Parser_Based --VITON_Name $VITON_NAME --VITON_Model $TASK --stage $TASK --load_last_step False  \
   --res low_res --dataset_name $DATASET_NAME  --run_wandb $WANDB \
   --low_res_dataset_name viton_plus \
-  --niter 1 --niter_decay 1 --display_count 1 --print_step 1 --save_period 1 \
+  --niter 10000 --niter_decay 10000 --display_count 100 --print_step 100 --save_period 100 --val_count 100 \
   --viton_batch_size 4 --datamode $DATAMODE  --debug $DEBUG --sweeps $SWEEPS --seed $SEED

@@ -42,11 +42,11 @@ def train_cpvton_plus_(opt_, root_opt_, run_wandb=False, sweep=None):
         import wandb 
         wandb.login()
         sweep_id = wandb.sweep(sweep=sweep, project="Fashion-NeRF-Sweep")
-        wandb.agent(sweep_id,_train_cpvton_plus_sweep,count=5)
+        wandb.agent(sweep_id,_train_cpvton_plus_sweep,count=3)
     elif run_wandb:
         import wandb
         wandb.login()
-        wandb.init(project="Fashion-NeRF", entity='prime_lab', notes=f"question: {opt.question}, intent: {opt.intent}", tags=[f"{root_opt.experiment_run}"], config=vars(opt))
+        wandb.init(project="Fashion-NeRF", entity='rail_lab', tags=[f"{root_opt.experiment_run}"], config=vars(opt))
         temp_opt = vars(opt)
         temp_opt['wandb_name'] = wandb.run.name
         opt = argparse.Namespace(**temp_opt)
@@ -57,7 +57,7 @@ def train_cpvton_plus_(opt_, root_opt_, run_wandb=False, sweep=None):
     
 def _train_cpvton_plus_sweep():
     if wandb is not None:
-        with wandb.init(project="Fashion-NeRF-Sweep", entity='prime_lab', notes=f"question: {opt.question}, intent: {opt.intent}", tags=[f"{root_opt.experiment_run}"], config=vars(opt)):
+        with wandb.init(project="Fashion-NeRF-Sweep", entity='rail_lab', tags=[f"{root_opt.experiment_run}"], config=vars(opt)):
             _train_cpvton_plus_()
       
 def split_dataset(dataset,train_size=0.8):
@@ -68,24 +68,39 @@ def split_dataset(dataset,train_size=0.8):
     validation_subset = Subset(dataset, validation_indices)
     return train_subset, validation_subset      
             
+def make_dirs(opt):
+    if not os.path.exists(opt.tensorboard_dir):
+        os.makedirs(opt.tensorboard_dir)
+    if not os.path.exists(opt.results_dir):
+        os.makedirs(opt.results_dir)
+    if not os.path.exists(opt.tom_save_final_checkpoint_dir):
+        print("dir: ", opt.tom_save_final_checkpoint_dir)
+        os.makedirs(opt.tom_save_final_checkpoint_dir)    
+    if not os.path.exists(opt.gmm_save_step_checkpoint_dir):
+        os.makedirs(opt.gmm_save_step_checkpoint_dir)
+    if not os.path.exists(opt.tom_save_step_checkpoint_dir):
+        os.makedirs(opt.tom_save_step_checkpoint_dir)
+    if not os.path.exists(opt.gmm_save_final_checkpoint_dir):
+        os.makedirs(opt.gmm_save_final_checkpoint_dir)
+
 def _train_cpvton_plus_():
     global opt, root_opt, wandb,sweep_id
+    make_dirs(opt)
+    board = SummaryWriter(log_dir = opt.tensorboard_dir)
     if sweep_id is not None:
-        opt = wandb.config
+        opt.niter = wandb.config.niter
+        opt.niter_decay = wandb.config.niter_decay
+        opt.lr = wandb.config.lr
+        opt.init_type = wandb.config.init_type
+        opt.Lgic = wandb.config.Lgic
+        
     experiment_string = f"{root_opt.experiment_run.replace('/','_')}_{root_opt.opt_vton_yaml.replace('yaml/','')}"
     with open(os.path.join(root_opt.experiment_run_yaml, experiment_string), 'w') as outfile:
         yaml.dump(vars(opt), outfile, default_flow_style=False)
-    print("Start to train stage: %s" % opt.VITON_Name)
-    
-    # visualization
-    if not os.path.exists(opt.tensorboard_dir):
-        os.makedirs(opt.tensorboard_dir)
-    board = SummaryWriter(log_dir = opt.tensorboard_dir)
+    # print("Start to train stage: %s" % opt.VITON_Name)
     log_path = os.path.join(opt.results_dir, 'log.txt')
-    if not os.path.exists(opt.results_dir):
-        os.makedirs(opt.results_dir)
-        with open(log_path, 'w') as file:
-            file.write(f"Hello, this is experiment {root_opt.experiment_run} \n")
+    with open(log_path, 'w') as file:
+        file.write(f"Hello, this is experiment {root_opt.experiment_run} \n")
     # create dataset
     train_dataset = CPDataset(root_opt, opt)
     train_dataset, validation_dataset = split_dataset(train_dataset)
@@ -103,9 +118,7 @@ def _train_cpvton_plus_():
             load_checkpoint(model, opt.gmm_load_final_checkpoint)
             print_log(log_path, f'Load pretrained model from {opt.gmm_load_final_checkpoint}')
         train_gmm(opt, train_loader, validation_loader, model, board, wandb=wandb)
-        if not os.path.exists(opt.gmm_save_final_checkpoint_dir):
-            os.makedirs(opt.gmm_save_final_checkpoint_dir)
-        save_checkpoint(model,opt.gmm_save_final_checkpoint, opt)
+        save_checkpoint(model,opt.gmm_save_final_checkpoint)
     elif opt.stage == 'TOM':
         # model = UnetGenerator(25, 4, 6, ngf=64, norm_layer=nn.InstanceNorm2d)  # CP-VTON
         model = UnetGenerator(
@@ -119,7 +132,6 @@ def _train_cpvton_plus_():
             load_checkpoint(gmm_model, opt.gmm_load_final_checkpoint)
             print_log(log_path, f'Load pretrained gmm_model from {opt.gmm_load_final_checkpoint}')
             
-            
         last_step = root_opt.load_last_step if type(root_opt.load_last_step) == bool else eval(root_opt.load_last_step)
         if last_step:
             load_checkpoint(model, opt.tom_load_step_checkpoint)
@@ -128,15 +140,9 @@ def _train_cpvton_plus_():
             load_checkpoint(model, opt.tom_load_final_checkpoint)
             print_log(log_path, f'Load pretrained model from {opt.tom_load_final_checkpoint}')
         train_tom(opt, train_loader, gmm_model, model, board, wandb=wandb)
-        if not os.path.exists(opt.tom_save_final_checkpoint_dir):
-            os.makedirs(opt.tom_save_final_checkpoint_dir)
-        save_checkpoint(model, opt.tom_save_final_checkpoint, opt)
-    else:
-        raise NotImplementedError('Model [%s] is not implemented' % opt.stage)
-
-    # model = GMM(opt)
-    # save_checkpoint(model, opt.gmm_load_final_checkpoint)
-    print('Finished training %s, named:' % opt.stage)
+        save_checkpoint(model, opt.tom_save_final_checkpoint)
+    
+    print('Finished training named:' )
 
 
 def train_gmm(opt, train_loader, validation_loader, model, board, wandb=None):
@@ -161,29 +167,27 @@ def train_gmm(opt, train_loader, validation_loader, model, board, wandb=None):
         agnostic = inputs['agnostic'].cuda()
         c = inputs['cloth'].cuda()
         cm = inputs['cloth_mask'].cuda()
-        im_c = inputs['parse_cloth'].cuda()
+        im_c =  inputs['parse_cloth'].cuda()
+        im_cm = inputs['parse_cloth_mask'].cuda()
         im_g = inputs['grid_image'].cuda()
 
         grid, theta = model(agnostic, cm)    # can be added c too for new training
         warped_cloth = F.grid_sample(c, grid, padding_mode='border')
         warped_mask = F.grid_sample(cm, grid, padding_mode='zeros')
         warped_grid = F.grid_sample(im_g, grid, padding_mode='zeros')
-
+        if opt.clip_warping:
+            warped_cloth = warped_cloth * warped_mask + torch.ones_like(warped_cloth) * (1 - warped_mask)
         visuals = [[im_h, shape, im_pose],
                    [c, warped_cloth, im_c],
                    [warped_grid, (warped_cloth+im)*0.5, im]]
 
         # loss for warped cloth
         Lwarp = criterionL1(warped_cloth, im_c)    # changing to previous code as it corresponds to the working code
-        # Actual loss function as in the paper given below (comment out previous line and uncomment below to train as per the paper)
-        # Lwarp = criterionL1(warped_mask, cm)    # loss for warped mask thanks @xuxiaochun025 for fixing the git code.
-        
-        # grid regularization loss
         Lgic = gicloss(grid)
         # 200x200 = 40.000 * 0.001
         Lgic = Lgic / (grid.shape[0] * grid.shape[1] * grid.shape[2])
 
-        loss = Lwarp + 40 * Lgic    # total GMM loss
+        loss = Lwarp + opt.Lgic * Lgic    # total GMM loss
 
         optimizer.zero_grad()
         loss.backward()
@@ -195,17 +199,17 @@ def train_gmm(opt, train_loader, validation_loader, model, board, wandb=None):
             board.add_scalar('40*Lgic', (40*Lgic).item(), step+1)
             board.add_scalar('l1_cloth', Lwarp.item(), step+1)
             if wandb is not None:
-                my_table = wandb.Table(columns=['Image','Pose Image','Head Image','Cloth','Warped Grid','Warped Cloth','Warped Cloth Mask','Warped Cloth + Image'])
-                real_image_wandb = get_wandb_image(im[0], wandb=wandb)
-                pose_image_wandb = get_wandb_image(im_pose[0], wandb=wandb)
-                head_image_wandb = get_wandb_image(im_h[0], wandb=wandb)
-                cloth_image_wandb = get_wandb_image(c[0], wandb=wandb)
-                warped_grid_image_wandb = get_wandb_image(warped_grid[0], wandb=wandb)
-                warped_cloth_image_wandb = get_wandb_image(warped_cloth[0], wandb=wandb)
-                warped_cloth_mask_wandb = get_wandb_image(warped_mask[0], wandb=wandb)
-                wmc = (warped_cloth+im)*0.5
-                warped_cloth_and_image_wandb = get_wandb_image(wmc[0], wandb=wandb)
-                my_table.add_data(real_image_wandb,pose_image_wandb, head_image_wandb,cloth_image_wandb,warped_grid_image_wandb,warped_cloth_image_wandb,warped_cloth_mask_wandb,warped_cloth_and_image_wandb)
+                my_table = wandb.Table(columns=['Image', 'Pose Image','Clothing','Parse Clothing','Parse Clothing Mask','Warped Cloth','Warped Cloth Mask'])
+                real_image_wandb = get_wandb_image(im[0], wandb=wandb) # 'Image'
+                pose_image_wandb = get_wandb_image(im_pose[0], wandb=wandb) #'Pose Image'
+                cloth_image_wandb = get_wandb_image(c[0], wandb=wandb) # 'Clothing'
+                imc_image_wandb = get_wandb_image(im_c[0], wandb=wandb)  #'Parse Clothing'
+                imc_mask_image_wandb = get_wandb_image(im_cm[0], wandb=wandb)  #'Parse Clothing'
+                warped_cloth_image_wandb = get_wandb_image(warped_cloth[0], wandb=wandb) # 'Warped Cloth'
+                warped_cloth_mask_wandb = get_wandb_image(warped_mask[0], wandb=wandb) # 'Warped Cloth Mask'
+                my_table.add_data(real_image_wandb, pose_image_wandb, cloth_image_wandb, 
+                    imc_image_wandb, imc_mask_image_wandb, warped_cloth_image_wandb, warped_cloth_mask_wandb
+                )
                 wandb.log({'warping_loss': loss.item(),
                            'Lgic': (40*Lgic).item(),
                            'l1_cloth': Lwarp.item(),
@@ -219,8 +223,6 @@ def train_gmm(opt, train_loader, validation_loader, model, board, wandb=None):
             validate_gmm(validation_loader, model, wandb=wandb)
             model.train()
         if (step+1) % opt.save_period == 0:
-            if not os.path.exists(opt.gmm_save_step_checkpoint_dir):
-                os.makedirs(opt.gmm_save_step_checkpoint_dir)
             save_checkpoint(model, opt.gmm_save_step_checkpoint % (step+1))
     save_checkpoint(model, opt.gmm_load_final_checkpoint)
     
@@ -242,13 +244,15 @@ def validate_gmm(validation_loader,model,wandb=wandb):
     c = inputs['cloth'].cuda()
     cm = inputs['cloth_mask'].cuda()
     im_c = inputs['parse_cloth'].cuda()
+    im_cm = inputs['parse_cloth_mask'].cuda()
     im_g = inputs['grid_image'].cuda()
 
     grid, theta = model(agnostic, cm)    # can be added c too for new training
     warped_cloth = F.grid_sample(c, grid, padding_mode='border')
     warped_mask = F.grid_sample(cm, grid, padding_mode='zeros')
     warped_grid = F.grid_sample(im_g, grid, padding_mode='zeros')
-
+    if opt.clip_warping:
+        warped_cloth = warped_cloth * warped_mask + torch.ones_like(warped_cloth) * (1 - warped_mask)
     visuals = [[im_h, shape, im_pose],
                 [c, warped_cloth, im_c],
                 [warped_grid, (warped_cloth+im)*0.5, im]]
@@ -263,24 +267,21 @@ def validate_gmm(validation_loader,model,wandb=wandb):
 
     loss = Lwarp + 40 * Lgic    # total GMM loss
     if wandb is not None:
-        my_table = wandb.Table(columns=['Image','Pose Image','Head Image','Cloth','Warped Grid','Warped Cloth','Warped Cloth Mask','Warped Cloth + Image'])
-        real_image_wandb = get_wandb_image(im[0], wandb=wandb)
-        pose_image_wandb = get_wandb_image(im_pose[0], wandb=wandb)
-        head_image_wandb = get_wandb_image(im_h[0], wandb=wandb)
-        cloth_image_wandb = get_wandb_image(c[0], wandb=wandb)
-        warped_grid_image_wandb = get_wandb_image(warped_grid[0], wandb=wandb)
-        warped_cloth_image_wandb = get_wandb_image(warped_cloth[0], wandb=wandb)
-        warped_cloth_mask_wandb = get_wandb_image(warped_mask[0], wandb=wandb)
-        wmc = (warped_cloth+im)*0.5
-        warped_cloth_and_image_wandb = get_wandb_image(wmc[0], wandb=wandb)
-        my_table.add_data(real_image_wandb,pose_image_wandb, head_image_wandb,cloth_image_wandb,warped_grid_image_wandb,warped_cloth_image_wandb,warped_cloth_mask_wandb,warped_cloth_and_image_wandb)
+        my_table = wandb.Table(columns=['Image', 'Pose Image','Clothing','Parse Clothing','Parse Clothing Mask','Warped Cloth','Warped Cloth Mask'])
+        real_image_wandb = get_wandb_image(im[0], wandb=wandb) # 'Image'
+        pose_image_wandb = get_wandb_image(im_pose[0], wandb=wandb) #'Pose Image'
+        cloth_image_wandb = get_wandb_image(c[0], wandb=wandb) # 'Clothing'
+        imc_image_wandb = get_wandb_image(im_c[0], wandb=wandb)  #'Parse Clothing'
+        imc_mask_image_wandb = get_wandb_image(im_cm[0], wandb=wandb)  #'Parse Clothing'
+        warped_cloth_image_wandb = get_wandb_image(warped_cloth[0], wandb=wandb) # 'Warped Cloth'
+        warped_cloth_mask_wandb = get_wandb_image(warped_mask[0], wandb=wandb) # 'Warped Cloth Mask'
+        my_table.add_data(real_image_wandb, pose_image_wandb, cloth_image_wandb, 
+            imc_image_wandb, imc_mask_image_wandb, warped_cloth_image_wandb, warped_cloth_mask_wandb
+        )
         wandb.log({'val_warping_loss': loss.item(),
-                    'val_Lgic': (40*Lgic).item(),
                     'val_l1_cloth': Lwarp.item(),
         'Val_Table':my_table })
     t = time.time() - iter_start_time
-    print('Validaton time: %.3f, loss: %4f, (40*Lgic): %.8f, Lwarp: %.6f' %
-            (t, t, loss.item(), (40*Lgic).item(), Lwarp.item()), flush=True)
     
 def train_tom(opt, train_loader, validation_loader,  gmm_model, model, board, wandb=None):
     model.cuda()
@@ -330,7 +331,9 @@ def train_tom(opt, train_loader, validation_loader,  gmm_model, model, board, wa
         visuals = [[im_h, shape, im_pose],
                    [warped_cloth, pcm*2-1, m_composite*2-1],
                    [p_rendered, p_tryon, im]]  # CP-VTON+
-
+        if opt.clip_warping:
+            warped_cloth = warped_cloth * pcm + torch.ones_like(warped_cloth) * (1 - pcm)
+            
         loss_l1 = criterionL1(p_tryon, im)
         loss_vgg = criterionVGG(p_tryon, im)
         # loss_mask = criterionMask(m_composite, cm)  # CP-VTON
@@ -368,7 +371,7 @@ def train_tom(opt, train_loader, validation_loader,  gmm_model, model, board, wa
                 wandb.log({'l1_composition_loss': loss_l1.item(),
                            'vgg_composition_loss':loss_vgg.item(),
                            'mask_composition_loss':loss_mask.item(),
-                           'composition_loss Loss':loss.item(),
+                           'composition_loss':loss.item(),
                 'Table':my_table })
             t = time.time() - iter_start_time
             print('step: %8d, time: %.3f, loss: %.4f, l1: %.4f, vgg: %.4f, mask: %.4f'
@@ -380,9 +383,7 @@ def train_tom(opt, train_loader, validation_loader,  gmm_model, model, board, wa
             model.train()
         if (step+1) % opt.save_period == 0:
             print_log(os.path.join(opt.results_dir, 'log.txt'), f'Save pretrained model to {opt.tom_save_step_checkpoint}')
-            if not os.path.exists(opt.tom_save_step_checkpoint_dir):
-                os.makedirs(opt.tom_save_step_checkpoint_dir)
-            save_checkpoint(model, opt.tom_save_step_checkpoint % (step+1), opt)
+            save_checkpoint(model, opt.tom_save_step_checkpoint % (step+1))
             
 def validate_tom(validation_loader,model,gmm_model, wandb=wandb):
     model.cuda()
@@ -455,7 +456,7 @@ def validate_tom(validation_loader,model,gmm_model, wandb=wandb):
             wandb.log({'val_l1_composition_loss': loss_l1.item(),
                         'val_vgg_composition_loss':loss_vgg.item(),
                         'val_mask_composition_loss':loss_mask.item(),
-                        'val_composition_loss Loss':loss.item(),
+                        'val_composition_loss':loss.item(),
             'Val_Table':my_table })
     
     

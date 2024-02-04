@@ -1,8 +1,8 @@
 # =====================  Sweep Hyperparameters
 program: train_condition.py
-method: grid  # Can be grid, random, or bayes
+method: bayes  # Can be grid, random, or bayes
 metric:
-  name: warping_loss
+  name: val_warping_loss
   goal: minimize
 parameters:
   lr:

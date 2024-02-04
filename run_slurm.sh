@@ -2,13 +2,16 @@
 # Remember for HR_VITON, 
 #to change the fine_width & fine height 
 #depending on TOCG or GEN
+
+# run_number > 10 = Trained using new wandb
 experiment_number=12
-run_number=7
+run_number=18 # Compare all methods
 experiment_from_number=0
 run_from_number=0
-VITON_Type="Parser_Based" # [Parser_Based, Parser_Free]
-VITON_Name="HR_VITON" # [DM_VTON, ACGPN, CP_VTON, CP_VTON_plus, HR_VITON, LadiTON]
-task="TOCG" # [PB_Gen, PB_Warp,PF_Warp, PF_Gen, EMASC, GMM, TOM, TOCG]
+seed_number=1
+VITON_Type="Parser_Free" # [Parser_Based, Parser_Free]
+VITON_Name="PF_AFN" # [PF_AFN,DM_VTON, ACGPN, CP_VTON, CP_VTON_plus, HR_VITON, LadiTON]
+task="PB_Warp" # [PB_Gen, PB_Warp,PF_Warp, PF_Gen, EMASC, GMM, TOM, TOCG, GEN]
 dataset_name="Rail" # [Original, Rail]
 # log="viton.%N.%j"
 log="viton.%N"
@@ -27,9 +30,10 @@ export RUN_NUMBER=$run_number
 export RUN_FROM_NUMBER=$run_from_number
 export DATASET_NAME=$dataset_name
 export TASK=$task
+export SEED=$seed_number
 export DEBUG=0
 export WANDB=1
-export SWEEPS=1
+export SWEEPS=0
 export DATAMODE=train
 export DEVICE=0
 export VITON_NAME=$VITON_Name

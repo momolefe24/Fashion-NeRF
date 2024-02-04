@@ -20,15 +20,24 @@ echo ------------------------------------------------------
 nvidia-smi
 source ~/.bashrc
 conda activate NeRF
-export CUDA_VISIBLE_DEVICES=0
 echo "Launching the script ${SLURM_JOB_NAME}"
 # ./scripts/viton/viton.sh $SLURM_JOB_NAME {experiment_number}  {run_number} {experiment_from}  {run_number_from}
 # ./scripts/viton/viton.sh $SLURM_JOB_NAME 1 6 1 6
+
+echo "Start Debug: $DEBUG"
+echo "Experiment Number: $EXPERIMENT_NUMBER"
+echo "Experiment From Number: $EXPERIMENT_FROM_NUMBER"
+echo "Run Number: $RUN_NUMBER"
+echo "Run From Number: $RUN_FROM_NUMBER"
+echo "Dataset Name: $DATASET_NAME"
+echo "Device: $DEVICE"
+export CUDA_VISIBLE_DEVICES=$DEVICE
+
 
 ./scripts/viton/viton.sh --job_name Ladi_VITON --experiment_number 12 --run_number 1 \
   --experiment_from_number 12 --run_from_number 1 \
   --tps_experiment_from_number 12 --tps_run_from_number 1 --tps_load_from_model Original \
   --VITON_Type Parser_Based --VITON_Name Ladi_VITON --VITON_Model TPS --load_last_step False \
-  --gpu_ids 0 --device 0 --res high_res --dataset_name Original --run_wandb False \
-  --niter 1 --niter_decay 1 --display_count 1 --print_step 1 --save_period 1 \
-  --viton_batch_size 4 --datamode train
+  --gpu_ids 0 --device 0 --res high_res --dataset_name Original --run_wandb 0 \
+  --niter 1 --niter_decay 1 --display_count 1 --print_step 1 --save_period 1 --val_count 1 \
+  --viton_batch_size 4 --datamode $DATAMODE --debug $DEBUG --sweeps $SWEEPS --seed $SEED

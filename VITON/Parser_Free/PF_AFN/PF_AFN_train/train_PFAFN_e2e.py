@@ -176,8 +176,6 @@ def get_root_opt_checkpoint_dir(parser, root_opt):
     parser.pf_gen_save_step_checkpoint = os.path.join(parser.pf_gen_save_step_checkpoint_dir, parser.pf_gen_save_step_checkpoint)
     parser.pf_gen_save_step_checkpoint = fix(parser.checkpoint_root_dir + "/" + parser.pf_gen_save_step_checkpoint)
     parser.pf_gen_save_step_checkpoint_dir = os.path.join("/",*parser.pf_gen_save_step_checkpoint.split("/")[:-1])
-    # parser.pf_gen_load_step_checkpoint_dir = parser.pf_gen_load_step_checkpoint_dir.format(root_opt.parser_free_gen_experiment_from_run, root_opt.parser_free_gen_experiment_from_dir)
-    # parser.pf_gen_load_step_checkpoint = os.path.join(parser.pf_gen_load_step_checkpoint_dir, parser.pf_gen_load_step_checkpoint)
     
     parser.pf_gen_save_final_checkpoint_dir = parser.pf_gen_save_final_checkpoint_dir.format(root_opt.experiment_run, root_opt.this_viton_save_to_dir)
     parser.pf_gen_save_final_checkpoint = os.path.join(parser.pf_gen_save_final_checkpoint_dir, parser.pf_gen_save_final_checkpoint)
@@ -215,11 +213,11 @@ def train_pfafn_e2e_(opt_, root_opt_, run_wandb=False, sweep=None):
         import wandb 
         wandb.login()
         sweep_id = wandb.sweep(sweep=sweep, project="Fashion-NeRF-Sweep")
-        wandb.agent(sweep_id,_train_pfafn_e2e_sweep,count=5)
+        wandb.agent(sweep_id,_train_pfafn_e2e_sweep,count=3)
     elif run_wandb:
         import wandb
         wandb.login()
-        wandb.init(project="Fashion-NeRF", entity='prime_lab', notes=f"question: {opt.question}, intent: {opt.intent}", tags=[f"{root_opt.experiment_run}"], config=vars(opt))
+        wandb.init(project="Fashion-NeRF", entity='rail_lab', tags=[f"{root_opt.experiment_run}"], config=vars(opt))
         temp_opt = vars(opt)
         temp_opt['wandb_name'] = wandb.run.name
         opt = argparse.Namespace(**temp_opt)
@@ -228,10 +226,9 @@ def train_pfafn_e2e_(opt_, root_opt_, run_wandb=False, sweep=None):
         wandb = None
         _train_pfafn_e2e_()
 
-
 def _train_pfafn_e2e_sweep():
     if wandb is not None:
-        with wandb.init(project="Fashion-NeRF-Sweep", entity='prime_lab', notes=f"question: {opt.question}, intent: {opt.intent}", tags=[f"{root_opt.experiment_run}"], config=vars(opt)):
+        with wandb.init(project="Fashion-NeRF-Sweep", entity='rail_lab', tags=[f"{root_opt.experiment_run}"], config=vars(opt)):
             _train_pfafn_e2e_()
             
             
@@ -243,26 +240,38 @@ def split_dataset(dataset,train_size=0.8):
     validation_subset = Subset(dataset, validation_indices)
     return train_subset, validation_subset
 
+
+def make_dirs(opt):
+    if not os.path.exists(opt.pf_warp_save_step_checkpoint_dir):
+        os.makedirs(opt.pf_warp_save_step_checkpoint_dir)
+    if not os.path.exists(opt.pf_gen_save_final_checkpoint_dir):
+        os.makedirs(opt.pf_gen_save_final_checkpoint_dir)
+    if not os.path.exists(opt.pf_gen_save_step_checkpoint_dir):
+        os.makedirs(opt.pf_gen_save_step_checkpoint_dir)
+    if not os.path.exists(opt.results_dir):
+        os.makedirs(opt.results_dir)
+
 def _train_pfafn_e2e_():
     global opt, root_opt, wandb,sweep_id
+    make_dirs(opt)
+    writer = SummaryWriter(opt.tensorboard_dir)
+    torch.cuda.set_device(opt.device)
+    device = torch.device(f'cuda:{opt.device}')
     if sweep_id is not None:
         opt = wandb.config
     epoch_num = opt.niter + opt.niter_decay
-    writer = SummaryWriter(opt.tensorboard_dir)
     
     experiment_string = f"{root_opt.experiment_run.replace('/','_')}_{root_opt.opt_vton_yaml.replace('yaml/','')}"
     with open(os.path.join(root_opt.experiment_run_yaml, experiment_string), 'w') as outfile:
         yaml.dump(vars(opt), outfile, default_flow_style=False)
     
     log_path = os.path.join(opt.results_dir, 'log.txt')
-    if not os.path.exists(opt.results_dir):
-        os.makedirs(opt.results_dir)
-        with open(log_path, 'w') as file:
-            file.write(f"Hello, this is experiment {root_opt.experiment_run} \n")
+    
+    with open(log_path, 'w') as file:
+        file.write(f"Hello, this is experiment {root_opt.experiment_run} \n")
     
     
-    torch.cuda.set_device(opt.device)
-    device = torch.device(f'cuda:{opt.device}')
+    
 
     start_epoch, epoch_iter = 1, 0
 
@@ -331,8 +340,6 @@ def _train_pfafn_e2e_():
         if epoch % opt.val_count == 0:
             validate_batch(opt, root_opt, validation_loader, PB_warp_model,PF_warp_model,PB_gen_model, PF_gen_model, total_steps,
                 epoch,criterionL1,criterionVGG,writer)
-    if not os.path.exists(opt.pf_gen_save_final_checkpoint_dir):
-        os.makedirs(opt.pf_gen_save_final_checkpoint_dir)
     save_checkpoint(PF_gen_model, opt.pf_gen_save_final_checkpoint)
     
 def validate_batch(opt, root_opt, validation_loader, PB_warp_model,PF_warp_model,PB_gen_model, PF_gen_model, total_steps,
@@ -472,9 +479,9 @@ def validate_batch(opt, root_opt, validation_loader, PB_warp_model,PF_warp_model
         bg_loss_vgg = criterionVGG(p_rendered, real_image.cuda())
 
         if epoch < opt.niter:
-            loss_gen = (loss_l1 * 5 + loss_l1_skin * 30 + loss_vgg + loss_vgg_skin * 2 + bg_loss_l1 * 5 + bg_loss_vgg + 1 * loss_mask_l1)
+            loss_gen = (loss_l1 * opt.lambda_loss_l1 + loss_l1_skin * opt.lambda_loss_l1_skin + loss_vgg + loss_vgg_skin * 2 + bg_loss_l1 * opt.lambda_bg_loss_l1 + bg_loss_vgg + opt.lambda_loss_l1_mask * loss_mask_l1)
         else:
-            loss_gen = (loss_l1 * 5 + loss_l1_skin * 60 + loss_vgg + loss_vgg_skin * 4 + bg_loss_l1 * 5 + bg_loss_vgg + 1 * loss_mask_l1)
+            loss_gen = (loss_l1 * 5 + loss_l1_skin * 60 + loss_vgg + loss_vgg_skin *opt.lambda_loss_vgg_skin + bg_loss_l1 * opt.lambda_bg_loss_l1 + bg_loss_vgg + opt.lambda_loss_l1_mask * loss_mask_l1)
 
         loss_all = 0.25 * loss_warp + loss_gen
         writer.add_scalar('val_composition_loss', loss_all)
@@ -739,12 +746,7 @@ def train_batch(opt, root_opt, train_loader, PB_warp_model,PF_warp_model,PB_gen_
 
     if epoch % opt.save_period == 0:
         print('saving the model at the end of epoch %d, iters %d' % (epoch, total_steps))
-        if not os.path.exists(opt.pf_warp_save_step_checkpoint_dir):
-            os.makedirs(opt.pf_warp_save_step_checkpoint_dir)
         save_checkpoint(PF_warp_model,opt.pf_warp_save_step_checkpoint % (epoch+1))
-        
-        if not os.path.exists(opt.pf_gen_save_step_checkpoint_dir):
-            os.makedirs(opt.pf_gen_save_step_checkpoint_dir)
         save_checkpoint(PF_gen_model,opt.pf_gen_save_step_checkpoint % (epoch+1))
 
     if epoch > opt.niter:

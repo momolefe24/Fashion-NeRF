@@ -167,6 +167,7 @@ def condition_copy_root_opt_to_opt(parser, root_opt):
     parser.save_period = root_opt.save_period
     parser.print_step = root_opt.print_step
     parser.datamode = root_opt.datamode
+    parser.VITON_Model = root_opt.VITON_Model
     parser.niter = root_opt.niter
     parser.niter_decay = root_opt.niter_decay
     parser.VITON_Type = root_opt.VITON_Type
@@ -491,6 +492,7 @@ def generator_copy_root_opt_to_opt(parser, root_opt):
     parser.val_count = root_opt.val_count
     parser.viton_batch_size = root_opt.viton_batch_size
     parser.save_period = root_opt.save_period
+    parser.VITON_Model = root_opt.VITON_Model
     parser.print_step = root_opt.print_step
     parser.niter = root_opt.niter
     parser.niter_decay = root_opt.niter_decay

@@ -20,7 +20,6 @@ echo ------------------------------------------------------
 nvidia-smi
 source ~/.bashrc
 conda activate NeRF
-export CUDA_VISIBLE_DEVICES=0
 echo "Launching the script ${SLURM_JOB_NAME}"
 
 # export EXPERIMENT_NUMBER=24
@@ -42,7 +41,8 @@ echo "Start Debug: $DEBUG"
 echo "Experiment Number: $EXPERIMENT_NUMBER"
 echo "Run Number: $RUN_NUMBER"
 echo "Dataset Name: $DATASET_NAME"
-
+echo "Device: $DEVICE"
+export CUDA_VISIBLE_DEVICES=$DEVICE
 
 
 # parser_based_warp_experiment_from_number 19 - Original
@@ -64,5 +64,5 @@ echo "Dataset Name: $DATASET_NAME"
     --parser_based_gen_experiment_from_number 0 --parser_based_gen_run_from_number 0 --gen_load_from_model Original \
     --parser_free_warp_experiment_from_number 0 --parser_free_warp_run_from_number 0 --parser_free_warp_load_from_model Original \
     --dataset_name $DATASET_NAME --device $DEVICE --load_last_step False --run_wandb $WANDB \
-    --niter 1 --niter_decay 1 --display_count 1 --print_step 1 --save_period 1 --val_count 1000 \
+    --niter 50 --niter_decay 50 --display_count 10 --print_step 10 --save_period 10 --val_count 10 \
     --viton_batch_size 4 --datamode $DATAMODE --debug $DEBUG --sweeps $SWEEPS --seed $SEED

@@ -65,7 +65,7 @@ def Evaluation(opt, pred_list, gt_list, gt_mask_list):
             pred_img_tensor = T4(pred_img)
             pred_img_mask_tensor = T4(pred_mask_img)
 
-            if opt.segment_anything:
+            if opt.clip_warping:
                 # Apply the formula
                 result_img_tensor = pred_img_tensor * pred_img_mask_tensor + torch.ones_like(pred_img_tensor) * (1 - pred_img_mask_tensor)
                 result_img_tensor.clamp_(0, 1)

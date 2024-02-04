@@ -86,7 +86,7 @@ class VitonHDDataset(data.Dataset):
         self.full_input_data_path = os.path.join(root_opt.root_dir, root_opt.rail_dir)
         self.data_path = self.full_input_data_path
         data_items = glob(f"{self.full_input_data_path}/image/*")
-        if opt.dataset_name ==  'Rail':
+        if root_opt.dataset_name ==  'Rail':
             self.get_clothing_name = lambda path_to_image:"_".join(path_to_image.split("/")[-1].split("_")[:-1])
             self.clothing_names = [f"{self.get_clothing_name(image)}.jpg" for image in data_items]
             im_names = [image.split("/")[-1] for image in data_items]
@@ -129,10 +129,8 @@ class VitonHDDataset(data.Dataset):
             c_name = self.c_names[clothing_index]
         else:
             c_name = self.c_names[index]
-        if self.opt.dataset_name != 'Rail':
-            dataroot = self.dataroot_names[index]
-        else:
-            dataroot = self.data_path
+        
+        dataroot = self.data_path
         category = 'upper_body'
 
         if "captions" in self.outputlist:  # Load captions

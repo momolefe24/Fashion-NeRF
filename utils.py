@@ -462,7 +462,16 @@ def parse_arguments():
     parser.add_argument("--adam_weight_decay", type=float, default=1e-2, help="Weight decay to use.")
     parser.add_argument("--adam_epsilon", type=float, default=1e-08, help="Epsilon value for the Adam optimizer")
     parser.add_argument("--max_grad_norm", default=1.0, type=float, help="Max gradient norm.")
-
+    parser.add_argument(
+        "--enable_xformers_memory_efficient_attention", action="store_true", help="Whether or not to use xformers."
+    )
+    parser.add_argument("--use_png", default=False, action="store_true", help="Whether to use png or jpg for saving")
+    parser.add_argument("--num_inference_steps", default=50, type=int, help="Number of diffusion steps")
+    parser.add_argument("--guidance_scale", default=7.5, type=float, help="Guidance scale")
+    parser.add_argument("--compute_metrics", default=False, action="store_true",
+                        help="Compute metrics after generation")
+    parser.add_argument("--num_vstar", default=16, type=int, help="Number of predicted v* images to use")
+    parser.add_argument("--category", default="upper_body", type=str, choices=['all', 'lower_body', 'upper_body', 'dresses'])
     parser.add_argument(
         "--mixed_precision",
         type=str,

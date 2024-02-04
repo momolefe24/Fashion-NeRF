@@ -121,6 +121,8 @@ def copy_root_opt_to_opt(parser, root_opt):
     parser.seed = root_opt.seed
     parser.viton_batch_size = root_opt.viton_batch_size
     parser.save_period = root_opt.save_period
+    parser.VITON_Model = root_opt.VITON_Model
+    parser.VITON_Name = root_opt.VITON_Name
     parser.print_step = root_opt.print_step
     parser.niter = root_opt.niter
     parser.niter_decay = root_opt.niter_decay

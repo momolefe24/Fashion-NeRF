@@ -61,8 +61,6 @@ def remove_overlap(seg_out, warped_cm):
     warped_cm = warped_cm - (torch.cat([seg_out[:, 1:3, :, :], seg_out[:, 5:, :, :]], dim=1)).sum(dim=1, keepdim=True) * warped_cm
     return warped_cm
 
-
-
 # train_model(opt, root_opt, train_loader,test_loader, validation_loader, board, tocg, D, wandb)
 def train_model(opt,root_opt, train_loader, test_loader, validation_loader, board, tocg, D, wandb=None):
     tocg.cuda()
@@ -137,6 +135,8 @@ def train_model(opt,root_opt, train_loader, test_loader, validation_loader, boar
             warped_clothmask_paired = remove_overlap(F.softmax(fake_segmap, dim=1), warped_clothmask_paired)
             warped_cloth_paired = warped_cloth_paired * warped_clothmask_paired + torch.ones_like(warped_cloth_paired) * (1-warped_clothmask_paired)
 
+        if opt.clip_warping:
+            warped_cloth_paired = warped_cloth_paired * parse_cloth_mask + torch.ones_like(warped_cloth_paired) * (1 - parse_cloth_mask)
         # generated fake cloth mask & misalign mask
         fake_clothmask = (torch.argmax(fake_segmap.detach(), dim=1, keepdim=True) == 3).long()
         misalign = fake_clothmask - warped_cm_onehot
@@ -281,10 +281,10 @@ def train_model(opt,root_opt, train_loader, test_loader, validation_loader, boar
         if (step + 1) % opt.display_count == 0:
             # loss G
             board.add_scalar('warping_loss', loss_G.item(), step + 1)
-            board.add_scalar('l1_cloth', loss_l1_cloth.item(), step + 1)
-            board.add_scalar('vgg', loss_vgg.item(), step + 1)
-            board.add_scalar('total_variation_loss', loss_tv.item(), step + 1)
-            board.add_scalar('cross_entropy_loss', CE_loss.item(), step + 1)
+            board.add_scalar('warping_l1', loss_l1_cloth.item(), step + 1)
+            board.add_scalar('warping_vgg', loss_vgg.item(), step + 1)
+            board.add_scalar('warping_total_variation_loss', loss_tv.item(), step + 1)
+            board.add_scalar('warping_cross_entropy_loss', CE_loss.item(), step + 1)
 # Wandb     
             if not opt.no_GAN_loss:
                 board.add_scalar('gan', loss_G_GAN.item(), step + 1)
@@ -299,18 +299,22 @@ def train_model(opt,root_opt, train_loader, test_loader, validation_loader, boar
                                 nrow=4)
             board.add_images('train_images', grid.unsqueeze(0), step + 1)
             if wandb is not None:
-                my_table = wandb.Table(columns=['Grid', 'Segmentation Map For Label','Segmentation Map For Fake Data','Warped Cloth','Misalign'])
+                my_table = wandb.Table(columns=['Image', 'Pose Image','Clothing','Parse Clothing','Parse Clothing Mask','Warped Cloth','Warped Cloth Mask'])
                 grid_wandb = get_wandb_image(grid, wandb)
-                segmap_for_label = get_wandb_image(visualize_segmap(label.cpu()), wandb)
-                segmap_for_fake_data = get_wandb_image(visualize_segmap(fake_segmap.cpu()), wandb)
-                warped_cloth = get_wandb_image((warped_cloth_paired[0].cpu().detach() / 2 + 0.5), wandb)
-                misalign_cloth = get_wandb_image((misalign[0].cpu().detach()).expand(3, -1, -1), wandb)
-                my_table.add_data(grid_wandb, segmap_for_label,segmap_for_fake_data,warped_cloth,misalign_cloth)
-                wandb.log({'Table': my_table, 'warping_loss': loss_G.item()
-                ,'l1_cloth':loss_l1_cloth.item()
-                ,'vgg':loss_vgg.item()
-                ,'total_variation_loss':loss_tv.item()
-                ,'cross_entropy_loss':CE_loss.item()})
+                image_wandb = get_wandb_image((im_c[0].cpu() / 2 + 0.5),wandb) # 'Image'
+                pose_image_wandb = get_wandb_image((openpose[0].cpu() / 2 + 0.5),wandb) # 'Pose Image'
+                clothing_wandb = get_wandb_image((c_paired[0].cpu() / 2 + 0.5), wandb) # 'Clothing'
+                parse_clothing_wandb = get_wandb_image((im_c[0].cpu() / 2 + 0.5), wandb) # 'Parse Clothing'
+                parse_clothing_mask_wandb = get_wandb_image(parse_cloth_mask[0].cpu().expand(3, -1, -1), wandb) # 'Parse Clothing Mask'
+                warped_cloth_wandb = get_wandb_image((warped_cloth_paired[0].cpu().detach() / 2 + 0.5), wandb) # 'Warped Cloth'
+                warped_clothmask_paired_wandb = get_wandb_image((warped_clothmask_paired[0].cpu().detach()).expand(3, -1, -1), wandb) # 'Warped Cloth Mask'
+                my_table.add_data(image_wandb, pose_image_wandb, clothing_wandb, parse_clothing_wandb, parse_clothing_mask_wandb, warped_cloth_wandb,warped_clothmask_paired_wandb)
+                wandb.log({'Table': my_table, 
+                'warping_loss': loss_G.item()
+                ,'warping_l1':loss_l1_cloth.item()
+                ,'warping_vgg':loss_vgg.item()
+                ,'warping_total_variation_loss':loss_tv.item()
+                ,'warping_cross_entropy_loss':CE_loss.item()})
             
             inputs = test_loader.next_batch()
             c_paired = inputs['cloth'][opt.test_datasetting].cuda()
@@ -371,14 +375,8 @@ def train_model(opt,root_opt, train_loader, test_loader, validation_loader, boar
             if not opt.no_GAN_loss:
                 print("step: %8d, time: %.3f\nloss G: %.4f, L1_cloth loss: %.4f, VGG loss: %.4f, TV loss: %.4f CE: %.4f, G GAN: %.4f\nloss D: %.4f, D real: %.4f, D fake: %.4f"
                     % (step + 1, t, loss_G.item(), loss_l1_cloth.item(), loss_vgg.item(), loss_tv.item(), CE_loss.item(), loss_G_GAN.item(), loss_D.item(), loss_D_real.item(), loss_D_fake.item()), flush=True)
-            if not os.path.exists(opt.tocg_save_step_checkpoint_dir):
-                os.makedirs(opt.tocg_save_step_checkpoint_dir)
             save_checkpoint(tocg,opt.tocg_save_step_checkpoint % (step + 1), opt)
-            if not os.path.exists(opt.tocg_discriminator_save_step_checkpoint_dir):
-                os.makedirs(opt.tocg_discriminator_save_step_checkpoint_dir)
             save_checkpoint(D,opt.tocg_discriminator_save_step_checkpoint % (step + 1), opt)
-        # break
-
 
 def validate_tocg(opt, step, tocg,D, validation_loader,board,wandb):
     tocg.eval()
@@ -459,7 +457,8 @@ def validate_tocg(opt, step, tocg,D, validation_loader,board,wandb):
         if opt.occlusion:
             warped_clothmask_paired = remove_overlap(F.softmax(fake_segmap, dim=1), warped_clothmask_paired)
             warped_cloth_paired = warped_cloth_paired * warped_clothmask_paired + torch.ones_like(warped_cloth_paired) * (1-warped_clothmask_paired)
-
+        if opt.clip_warping:
+            warped_cloth_paired = warped_cloth_paired * parse_cloth_mask + torch.ones_like(warped_cloth_paired) * (1 - parse_cloth_mask)
         # generated fake cloth mask & misalign mask
         fake_clothmask = (torch.argmax(fake_segmap.detach(), dim=1, keepdim=True) == 3).long()
         misalign = fake_clothmask - warped_cm_onehot
@@ -571,10 +570,10 @@ def validate_tocg(opt, step, tocg,D, validation_loader,board,wandb):
                 loss_D = loss_D_fake + loss_D_real
                 
             board.add_scalar('val_warping_loss', loss_G.item(), step + 1)
-            board.add_scalar('val_l1_cloth', loss_l1_cloth.item(), step + 1)
-            board.add_scalar('val_vgg', loss_vgg.item(), step + 1)
-            board.add_scalar('val_total_variation_loss', loss_tv.item(), step + 1)
-            board.add_scalar('val_cross_entropy', CE_loss.item(), step + 1)
+            board.add_scalar('val_warping_l1', loss_l1_cloth.item(), step + 1)
+            board.add_scalar('val_warping_vgg', loss_vgg.item(), step + 1)
+            board.add_scalar('val_warping_total_variation_loss', loss_tv.item(), step + 1)
+            board.add_scalar('val_warping_cross_entropy_loss', CE_loss.item(), step + 1)
 # Wandb     
             if not opt.no_GAN_loss:
                 board.add_scalar('val_gan', loss_G_GAN.item(), step + 1)
@@ -582,8 +581,6 @@ def validate_tocg(opt, step, tocg,D, validation_loader,board,wandb):
                 board.add_scalar('val_discriminator', loss_D.item(), step + 1)
                 board.add_scalar('val_pred_real', loss_D_real.item(), step + 1)
                 board.add_scalar('val_pred_fake', loss_D_fake.item(), step + 1)
-            if not os.path.exists(os.path.join(opt.results_dir,'val')):
-                os.makedirs(os.path.join(opt.results_dir,'val'))
             save_image(warped_cloth_paired, os.path.join(opt.results_dir,'val', f'warped_cloth_paired_{step}.png'))
             grid = make_grid([(c_paired[0].cpu() / 2 + 0.5), (cm_paired[0].cpu()).expand(3, -1, -1), visualize_segmap(parse_agnostic.cpu()), ((densepose.cpu()[0]+1)/2),
                               (im_c[0].cpu() / 2 + 0.5), parse_cloth_mask[0].cpu().expand(3, -1, -1), (warped_cloth_paired[0].cpu().detach() / 2 + 0.5), (warped_cm_onehot[0].cpu().detach()).expand(3, -1, -1),
@@ -591,25 +588,26 @@ def validate_tocg(opt, step, tocg,D, validation_loader,board,wandb):
                                 nrow=4)
             board.add_images('valid_images', grid.unsqueeze(0), step + 1)
             if wandb is not None:
-                my_table = wandb.Table(columns=['Grid', 'Segmentation Map For Label','Segmentation Map For Fake Data','Warped Cloth','Misalign'])
-                grid_wandb = get_wandb_image(grid, wandb)
-                segmap_for_label = get_wandb_image(visualize_segmap(label.cpu()), wandb)
-                segmap_for_fake_data = get_wandb_image(visualize_segmap(fake_segmap.cpu()), wandb)
-                warped_cloth = get_wandb_image((warped_cloth_paired[0].cpu().detach() / 2 + 0.5), wandb)
-                misalign_cloth = get_wandb_image((misalign[0].cpu().detach()).expand(3, -1, -1), wandb)
-                my_table.add_data(grid_wandb, segmap_for_label,segmap_for_fake_data,warped_cloth,misalign_cloth)
+                my_table = wandb.Table(columns=['Image', 'Pose Image','Clothing','Parse Clothing','Parse Clothing Mask','Warped Cloth','Warped Cloth Mask'])
+                image_wandb = get_wandb_image((im_c[0].cpu() / 2 + 0.5),wandb) # 'Image'
+                pose_image_wandb = get_wandb_image((openpose[0].cpu() / 2 + 0.5),wandb) # 'Pose Image'
+                clothing_wandb = get_wandb_image((c_paired[0].cpu() / 2 + 0.5), wandb) # 'Clothing'
+                parse_clothing_wandb = get_wandb_image((im_c[0].cpu() / 2 + 0.5), wandb) # 'Parse Clothing'
+                parse_clothing_mask_wandb = get_wandb_image(parse_cloth_mask[0].cpu().expand(3, -1, -1), wandb) # 'Parse Clothing Mask'
+                warped_cloth_wandb = get_wandb_image((warped_cloth_paired[0].cpu().detach() / 2 + 0.5), wandb) # 'Warped Cloth'
+                warped_clothmask_paired_wandb = get_wandb_image((warped_clothmask_paired[0].cpu().detach()).expand(3, -1, -1), wandb) # 'Warped Cloth Mask'
+                my_table.add_data(image_wandb, pose_image_wandb, clothing_wandb, parse_clothing_wandb, parse_clothing_mask_wandb, warped_cloth_wandb,warped_clothmask_paired_wandb)
                 wandb.log({'Val_Table': my_table, 'val_warping_loss': loss_G.item()
-                ,'val_l1_cloth':loss_l1_cloth.item()
-                ,'val_vgg':loss_vgg.item()
-                ,'val_total_variation_loss':loss_tv.item()
-                ,'val_cross_entropy':CE_loss.item()})
+                ,'val_warping_l1':loss_l1_cloth.item()
+                ,'val_warping_vgg':loss_vgg.item()
+                ,'val_warping_total_variation_loss':loss_tv.item()
+                ,'val_warping_cross_entropy_loss':CE_loss.item()})
                 
             # calculate iou
             iou = iou_metric(F.softmax(fake_segmap, dim=1).detach(), label)
             iou_list.append(iou.item())
             wandb.log({'val_iou':np.mean(iou_list) })
-            board.add_scalar('val_iou', np.mean(iou_list), step + 1)
-            
+            board.add_scalar('val_iou', np.mean(iou_list), step + 1)  
           
 def print_log(log_path, content, to_print=True):
     import os
@@ -619,8 +617,7 @@ def print_log(log_path, content, to_print=True):
             f.write('\n')
 
         if to_print:
-            print(content)
-             
+            print(content)      
              
 def get_sam(opt):
     sam = sam_model_registry[opt.sam_model_type](checkpoint=opt.sam_checkpoint) 
@@ -628,6 +625,12 @@ def get_sam(opt):
         sam.to(device="cuda") 
     return sam
 
+
+def _train_hrviton_tocg_sweep():
+    if wandb is not None:
+        with wandb.init(project="Fashion-NeRF-Sweep", entity='rail_lab', tags=[f"{root_opt.experiment_run}"], config=vars(opt)):
+            _train_hrviton_tocg_()
+            
 def train_hrviton_tocg_(opt_, root_opt_, run_wandb=False, sweep=None):
     global opt, root_opt, wandb,sweep_id
     opt,root_opt = condition_process_opt(opt_, root_opt_)
@@ -636,11 +639,11 @@ def train_hrviton_tocg_(opt_, root_opt_, run_wandb=False, sweep=None):
         import wandb 
         wandb.login()
         sweep_id = wandb.sweep(sweep=sweep, project="Fashion-NeRF-Sweep")
-        wandb.agent(sweep_id,_train_hrviton_tocg_sweep,count=5)
+        wandb.agent(sweep_id,_train_hrviton_tocg_sweep,count=3)
     elif run_wandb:
         import wandb
         wandb.login()
-        wandb.init(project="Fashion-NeRF", entity='prime_lab', notes=f"question: {opt.question}, intent: {opt.intent}", tags=[f"{root_opt.experiment_run}"], config=vars(opt))
+        wandb.init(project="Fashion-NeRF", entity='rail_lab', tags=[f"{root_opt.experiment_run}"], config=vars(opt))
         temp_opt = vars(opt)
         temp_opt['wandb_name'] = wandb.run.name
         opt = argparse.Namespace(**temp_opt)
@@ -648,30 +651,59 @@ def train_hrviton_tocg_(opt_, root_opt_, run_wandb=False, sweep=None):
     else:
         wandb = None
         _train_hrviton_tocg_()
- 
- 
-def _train_hrviton_tocg_sweep():
-    if wandb is not None:
-        with wandb.init(project="Fashion-NeRF-Sweep", entity='prime_lab', notes=f"question: {opt.question}, intent: {opt.intent}", tags=[f"{root_opt.experiment_run}"], config=vars(opt)):
-            _train_hrviton_tocg_()
-            
-def _train_hrviton_tocg_():
-    global opt, root_opt, wandb,sweep_id
-    if sweep_id is not None:
-        opt = wandb.config
+             
+def make_dirs(opt):
     if not os.path.exists(opt.tensorboard_dir):
         os.makedirs(opt.tensorboard_dir)
+    if not os.path.exists(opt.tocg_save_final_checkpoint_dir):
+        os.makedirs(opt.tocg_save_final_checkpoint_dir)
+    if not os.path.exists(opt.tocg_discriminator_save_final_checkpoint_dir):
+        os.makedirs(opt.tocg_discriminator_save_final_checkpoint_dir)
+    if not os.path.exists(os.path.join(opt.results_dir,'val')):
+        os.makedirs(os.path.join(opt.results_dir,'val'))
+    if not os.path.exists(opt.results_dir):
+        os.makedirs(opt.results_dir)
+    if not os.path.exists(opt.tocg_save_step_checkpoint_dir):
+        os.makedirs(opt.tocg_save_step_checkpoint_dir)
+    if not os.path.exists(opt.tocg_discriminator_save_step_checkpoint_dir):
+        os.makedirs(opt.tocg_discriminator_save_step_checkpoint_dir)
+        
+def _train_hrviton_tocg_():
+    global opt, root_opt, wandb,sweep_id
+    make_dirs(opt)
     board = SummaryWriter(log_dir = opt.tensorboard_dir)
     torch.cuda.set_device(opt.device)
+    if sweep_id is not None:
+        opt.lr = wandb.config.lr
+        opt.momentum = wandb.config.momentum
+        opt.segment_anything = wandb.config.segment_anything
+        opt.flow_self_attention = wandb.config.flow_self_attention
+        opt.flow_spatial_attention = wandb.config.flow_spatial_attention
+        opt.flow_channel_attention = wandb.config.flow_channel_attention
+        opt.feature_pyramid_self_attention = wandb.config.feature_pyramid_self_attention
+        opt.feature_pyramid_spatial_attention = wandb.config.feature_pyramid_spatial_attention
+        opt.feature_pyramid_channel_attention = wandb.config.feature_pyramid_channel_attention
+        opt.G_lr = wandb.config.G_lr
+        opt.D_lr = wandb.config.D_lr
+        opt.CElamda = wandb.config.CElamda
+        opt.GANlambda = wandb.config.GANlambda
+        opt.loss_l1_cloth_lambda = wandb.config.loss_l1_cloth_lambda
+        opt.occlusion = wandb.config.occlusion
+        opt.norm_G = wandb.config.norm_G
+        opt.num_D = wandb.config.num_D
+        opt.init_type = wandb.config.init_type
+        opt.num_upsampling_layers = wandb.config.num_upsampling_layers
+        opt.lambda_l1 = wandb.config.lambda_l1
+        opt.lambda_vgg = wandb.config.lambda_vgg
+        opt.lambda_feat = wandb.config.lambda_feat
+
     experiment_string = f"{root_opt.experiment_run.replace('/','_')}_{root_opt.opt_vton_yaml.replace('yaml/','')}"
     with open(os.path.join(root_opt.experiment_run_yaml, experiment_string), 'w') as outfile:
         yaml.dump(vars(opt), outfile, default_flow_style=False)
     # Directories
     log_path = os.path.join(opt.results_dir, 'log.txt')
-    if not os.path.exists(opt.results_dir):
-        os.makedirs(opt.results_dir)
-        with open(log_path, 'w') as file:
-            file.write(f"Hello, this is experiment {root_opt.experiment_run} \n")
+    with open(log_path, 'w') as file:
+        file.write(f"Hello, this is experiment {root_opt.experiment_run} \n")
             
     train_dataset = FashionNeRFDataset(root_opt, opt, viton=True, model='viton')
     # train_dataset.__getitem__(0)
@@ -709,18 +741,12 @@ def _train_hrviton_tocg_():
         load_checkpoint(D, opt.tocg_discriminator_load_final_checkpoint)
         print_log(log_path, f'Load pretrained dicriminator model from {opt.tocg_discriminator_load_final_checkpoint}')
     
-
     # Train
     train_model(opt, root_opt, train_loader,test_loader, validation_loader, board, tocg, D, wandb)
-
     # Save Checkpoint
     if wandb is not None:
         wandb.finish()
-    if not os.path.exists(opt.tocg_save_final_checkpoint_dir):
-        os.makedirs(opt.tocg_save_final_checkpoint_dir)
     save_checkpoint(tocg,opt.tocg_save_final_checkpoint, opt)
-    if not os.path.exists(opt.tocg_discriminator_save_final_checkpoint_dir):
-        os.makedirs(opt.tocg_discriminator_save_final_checkpoint_dir)
     save_checkpoint(D,opt.tocg_discriminator_save_final_checkpoint , opt)
-    print("Finished training %s!" % opt.VITON_Name)
+    print("Finished training !" )
 
