@@ -11,6 +11,7 @@ from VITON.Parser_Based.CP_VTON.cp_dataset import CPDataset, CPDataLoader
 from VITON.Parser_Based.CP_VTON.networks import GMM, UnetGenerator, VGGLoss, load_checkpoint, save_checkpoint
 from torch.utils.data import DataLoader, Subset
 from sklearn.model_selection import train_test_split
+from tqdm import tqdm
 from tensorboardX import SummaryWriter
 from VITON.Parser_Based.CP_VTON.visualization import board_add_image, board_add_images
 from VITON.Parser_Based.CP_VTON.utils import *
@@ -39,7 +40,7 @@ def train_gmm(opt, train_loader,validation_loader, model, board, wandb=None):
     optimizer = torch.optim.Adam(model.parameters(), lr=opt.lr, betas=(0.5, 0.999))
     
     
-    for step in range(opt.niter + opt.niter_decay):
+    for step in tqdm(range(opt.niter + opt.niter_decay)):
         iter_start_time = time.time()
         inputs = train_loader.next_batch()
             
@@ -72,41 +73,45 @@ def train_gmm(opt, train_loader,validation_loader, model, board, wandb=None):
         optimizer.step()
             
         if (step+1) % opt.display_count == 0:
-            board_add_images(board, 'combine', visuals, step+1)
-            board.add_scalar('warping_loss', loss.item(), step+1)
-            board.add_image('Image', im[0], step+1)
-            board.add_image('Pose Image', im_pose[0], step+1)
-            board.add_image('Clothing', c[0], step+1)
-            board.add_image('Parse Clothing', im_c[0], step+1)
-            board.add_image('Parse Clothing Mask', im_cm[0], step+1)
-            board.add_image('Warped Cloth', warped_cloth[0], step+1)
-            board.add_image('Warped Cloth Mask', warped_mask[0], step+1)
-            if wandb is not None:
-                my_table = wandb.Table(columns=['Image', 'Pose Image','Clothing','Parse Clothing','Parse Clothing Mask','Warped Cloth','Warped Cloth Mask'])
-                real_image_wandb = get_wandb_image(im[0], wandb=wandb) # 'Image'
-                pose_image_wandb = get_wandb_image(im_pose[0], wandb=wandb) #'Pose Image'
-                cloth_image_wandb = get_wandb_image(c[0], wandb=wandb) # 'Clothing'
-                imc_image_wandb = get_wandb_image(im_c[0], wandb=wandb)  #'Parse Clothing'
-                imc_mask_image_wandb = get_wandb_image(im_cm[0].cpu().expand(3, -1, -1), wandb=wandb)  #'Parse Clothing'
-                warped_cloth_image_wandb = get_wandb_image((warped_cloth[0].cpu().detach() / 2 + 0.5), wandb=wandb) # 'Warped Cloth'
-                warped_cloth_mask_wandb = get_wandb_image(warped_mask[0], wandb=wandb) # 'Warped Cloth Mask'
-                my_table.add_data(real_image_wandb, pose_image_wandb, cloth_image_wandb, 
-                    imc_image_wandb, imc_mask_image_wandb, warped_cloth_image_wandb, warped_cloth_mask_wandb
-                )
-                wandb.log({'warping_loss': 
-                    loss.item(),
-                'Table':my_table })
-            t = time.time() - iter_start_time
-            print('step: %8d, time: %.3f, loss: %4f' % (step+1, t, loss.item()), flush=True)
-        
+            log_images = {
+                'Image': im[0].cpu().detach() / 2 + 0.5,
+                'Pose Image': im_pose[0].cpu().detach() / 2 + 0.5,
+                'Clothing': c[0].cpu().detach() / 2 + 0.5,
+                'Parse Clothing': im_c[0].cpu().detach() / 2 + 0.5,
+                'Parse Clothing Mask': im_cm[0].cpu().expand(3, -1, -1),
+                'Warped Cloth': warped_cloth[0].cpu().detach() / 2 + 0.5,
+                'Warped Cloth Mask': warped_mask[0].cpu().detach() / 2 + 0.5,
+            }
+            log_results(log_images, board,wandb, loss, step,iter_start_time=iter_start_time,train=True)
         if (step + 1) % opt.val_count == 0:
-            validate_gmm(validation_loader, model,board, wandb=wandb)
+            validate_gmm(validation_loader, model,board, step, wandb=wandb)
             model.train()
         if (step+1) % opt.save_period == 0:
+            t = time.time() - iter_start_time
+            print('Saving checkpoint: %8d, time: %.3f, checkpoint: %s' % (step+1, t, opt.gmm_save_step_checkpoint % (step+1)), flush=True)
             save_checkpoint(model, opt.gmm_save_step_checkpoint % (step+1))
         # break
 
-def validate_gmm(validation_loader,model,board,wandb=wandb):
+def log_results(log, board,wandb, loss, step,iter_start_time=None,train=True):
+    warping_loss = 'warping_loss' if train else 'val_warping_loss'
+    table = 'Table' if train else 'Val_Table'
+    board.add_scalar(warping_loss, loss.item(), step+1)
+    wandb_images = []
+    for key,value in log.items():
+        board.add_image(key, value, step+1)
+        if wandb is not None:
+            wandb_images.append(get_wandb_image(value, wandb=wandb))
+    if wandb is not None:
+        my_table = wandb.Table(columns=['Image', 'Pose Image','Clothing','Parse Clothing','Parse Clothing Mask','Warped Cloth','Warped Cloth Mask'])
+        my_table.add_data(*wandb_images)
+        wandb.log({warping_loss: loss.item(), table:my_table })
+    if train and iter_start_time is not None:
+        t = time.time() - iter_start_time
+        print('training step: %8d, time: %.3f, loss: %4f' % (step+1, t, loss.item()), flush=True)
+    else:
+        print('validation step: %8d, loss: %4f' % (step+1, loss.item()), flush=True)
+
+def validate_gmm(validation_loader,model,board,step,wandb=wandb):
     model.cuda()
     model.eval()
 
@@ -133,29 +138,17 @@ def validate_gmm(validation_loader,model,board,wandb=wandb):
     if opt.clip_warping:
         warped_cloth = warped_cloth * warped_mask + torch.ones_like(warped_cloth) * (1 - warped_mask)
     loss = criterionL1(warped_cloth, im_c) 
-    
-    board.add_scalar('Val/warping_loss', loss.item())
-    board.add_image('Val/Image', im[0])
-    board.add_image('Val/Pose Image', im_pose[0])
-    board.add_image('Val/Clothing', c[0])
-    board.add_image('Val/Parse Clothing', im_c[0])
-    board.add_image('Val/Parse Clothing Mask', im_cm[0])
-    board.add_image('Val/Warped Cloth', warped_cloth[0])
-    board.add_image('Val/Warped Cloth Mask', warped_mask[0])
-    if wandb is not None:
-        my_table = wandb.Table(columns=['Image', 'Pose Image','Clothing','Parse Clothing','Parse Clothing Mask','Warped Cloth','Warped Cloth Mask'])
-        real_image_wandb = get_wandb_image(im[0], wandb=wandb) # 'Image'
-        pose_image_wandb = get_wandb_image(im_pose[0], wandb=wandb) #'Pose Image'
-        cloth_image_wandb = get_wandb_image(c[0], wandb=wandb) # 'Clothing'
-        imc_image_wandb = get_wandb_image(im_c[0], wandb=wandb)  #'Parse Clothing'
-        imc_mask_image_wandb = get_wandb_image(im_cm[0].cpu().expand(3, -1, -1), wandb=wandb)  #'Parse Clothing'
-        warped_cloth_image_wandb = get_wandb_image(warped_cloth[0], wandb=wandb) # 'Warped Cloth'
-        warped_cloth_mask_wandb = get_wandb_image(warped_mask[0], wandb=wandb) # 'Warped Cloth Mask'
-        my_table.add_data(real_image_wandb, pose_image_wandb, cloth_image_wandb, 
-            imc_image_wandb, imc_mask_image_wandb, warped_cloth_image_wandb, warped_cloth_mask_wandb
-        )
-        wandb.log({'val_warping_loss': loss.item(),
-        'Val_Table':my_table })
+    log_images = {
+                'Val/Image': im[0].cpu().detach() / 2 + 0.5,
+                'Val/Pose Image': im_pose[0].cpu().detach() / 2 + 0.5,
+                'Val/Clothing': c[0].cpu().detach() / 2 + 0.5,
+                'Val/Parse Clothing': im_c[0].cpu().detach() / 2 + 0.5,
+                'Val/Parse Clothing Mask': im_cm[0].cpu().expand(3, -1, -1),
+                'Val/Warped Cloth': warped_cloth[0].cpu().detach() / 2 + 0.5,
+                'Val/Warped Cloth Mask': warped_mask[0].cpu().detach() / 2 + 0.5,
+            }
+    log_results(log_images, board,wandb, loss,step,train=False)
+    print()
 
 def train_tom(opt, train_loader, validation_loader, gmm_model, model, board, wandb=None):
     model.cuda()

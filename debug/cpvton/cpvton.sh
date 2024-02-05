@@ -1,23 +1,18 @@
 #!/bin/bash
-#SBATCH -N 1
-#SBATCH -t 72:00:00
-#SBATCH --exclude=mscluster68,mscluster48,mscluster82,mscluster61
-#SBATCH --ntasks=1
-#SBATCH --partition=bigbatch
+export EXPERIMENT_NUMBER=7
+export EXPERIMENT_FROM_NUMBER=0
+export RUN_NUMBER=99
+export RUN_FROM_NUMBER=0
+export SEED=1
+export DATASET_NAME=Rail
+export TASK="GMM"
+export DEBUG=1
+export SWEEPS=0
+export DATAMODE=train
+export WANDB=0
+export DEVICE=0
+export VITON_NAME=CP_VTON
 
-echo ------------------------------------------------------
-echo -n 'Job is running on node ' $SLURM_JOB_NODELIST
-echo ------------------------------------------------------
-echo SLURM: sbatch is running on $SLURM_SUBMIT_HOST
-echo SLURM: job ID is $SLURM_JOB_ID
-echo SLURM: submit directory is $SLURM_SUBMIT_DIR
-echo SLURM: number of nodes allocated is $SLURM_JOB_NUM_NODES
-echo SLURM: number of cores is $SLURM_NTASKS
-echo SLURM: job name is $SLURM_JOB_NAME
-echo ------------------------------------------------------
-
-/bin/hostname
-nvidia-smi
 source ~/.bashrc
 conda activate NeRF
 echo "Launching the script ${SLURM_JOB_NAME}"
@@ -35,5 +30,5 @@ export CUDA_VISIBLE_DEVICES=$DEVICE
   --VITON_Type Parser_Based --VITON_Name $VITON_NAME --VITON_Model $TASK --stage $TASK --load_last_step False  \
   --res low_res --dataset_name $DATASET_NAME  --run_wandb $WANDB \
   --low_res_dataset_name viton_plus \
-  --niter 10000 --niter_decay 10000 --display_count 1000 --print_step 1000 --save_period 1000 --val_count 1000 \
+  --niter 10000 --niter_decay 10000 --display_count 100 --print_step 100 --save_period 100 --val_count 100 \
   --viton_batch_size 4 --datamode $DATAMODE --debug $DEBUG --sweeps $SWEEPS --seed $SEED

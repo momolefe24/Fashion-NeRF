@@ -88,6 +88,12 @@ def get_vton_opt(root_opt):
     yml_name =  f"yaml/{str(root_opt.VITON_Name).lower()}.yml"
     with open(yml_name, 'r') as config_file:
         config = yaml.safe_load(config_file)
+    base_dict = vars(root_opt)
+    if base_dict['node'] == 'merman':
+        config['root_dir'] = base_dict['merman_root_dir']
+        config['checkpoint_root_dir'] = base_dict['merman_checkpoint_root_dir']
+        config['tensorboard_dir'] = base_dict['merman_tensorboard_dir']
+        config['results_dir'] = base_dict['merman_results_dir']
     return config
 
 def get_vton_sweep(root_opt):
@@ -547,12 +553,18 @@ def override_arguments(base_args, override_args):
     override_dict = vars(override_args)
 
     # Override the base arguments with the ones provided by override arguments
+    if base_dict['node'] == 'merman':
+        base_dict['root_dir'] = base_dict['merman_root_dir']
+        base_dict['checkpoint_root_dir'] = base_dict['merman_checkpoint_root_dir']
+        base_dict['tensorboard_dir'] = base_dict['merman_tensorboard_dir']
+        base_dict['results_dir'] = base_dict['merman_results_dir']
     for key, value in override_dict.items():
         # We only override if the key exists in the base_args to avoid adding unknown parameters
         if key in base_dict and value is not None:
             base_dict[key] = value
     base_dict['opt_vton_yaml'] = f"yaml/{override_dict['VITON_Name'].lower()}.yml"
     base_dict['sweeps_yaml'] = f"sweeps/{override_dict['VITON_Name'].lower()}.yml"
+    
     # Convert the updated dictionary back to a Namespace
     return argparse.Namespace(**base_dict)
 
