@@ -61,8 +61,10 @@ dataset_root_dir: "/datasets/mmolefe"
 model_dir: "VITON/Parser_Free/CP_VTON/{}"
 dataroot: "../data/CP_VTON"
 valroot: "../data/CP_VTON"
-tensorboard_dir: "./tensorboard/{}/{}"
-results_dir: "./results/{}/{}"
+tensorboard_dir: "/gluster/mmolefe/tensorboard/{}/{}"
+# tensorboard_dir: "./tensorboard/{}/{}"
+# results_dir: "./results/{}/{}"
+results_dir: "/gluster/mmolefe/results/{}/{}"
 
 # ================================= GMM ================================= 
 gmm_save_step_checkpoint_dir: "/checkpoints/{}/{}/steps"
