@@ -4,13 +4,13 @@
 #depending on TOCG or GEN
 
 # run_number > 10 = Trained using new wandb
-experiment_number=12
-run_number=18 # Compare all methods
+experiment_number=20
+run_number=20 # Compare all methods
 experiment_from_number=0
 run_from_number=0
 seed_number=1
 VITON_Type="Parser_Free" # [Parser_Based, Parser_Free]
-VITON_Name="PF_AFN" # [PF_AFN,DM_VTON, ACGPN, CP_VTON, CP_VTON_plus, HR_VITON, LadiTON]
+VITON_Name="FS_VTON" # [FS_VTON, PF_AFN,DM_VTON, ACGPN, CP_VTON, CP_VTON_plus, HR_VITON, Ladi_VITON,SD_VITON]
 task="PB_Warp" # [PB_Gen, PB_Warp,PF_Warp, PF_Gen, EMASC, GMM, TOM, TOCG, GEN]
 dataset_name="Rail" # [Original, Rail]
 # log="viton.%N.%j"
@@ -32,7 +32,7 @@ export DATASET_NAME=$dataset_name
 export TASK=$task
 export SEED=$seed_number
 export DEBUG=0
-export WANDB=1
+export WANDB=0
 export SWEEPS=0
 export DATAMODE=train
 export DEVICE=0
@@ -84,6 +84,30 @@ then
     fi 
 fi
 
+if [ "$VITON_Name" == "FS_VTON" ]
+then 
+    if [ "$task" == "PB_Warp" ]
+    then 
+        sbatch -J "${VITON_Name}_${run_number}" -o "$output" -e "$error" slurms/viton/fs_vton/pb_warp.slurm
+    fi 
+
+    if [ "$task" == "PB_Gen" ]
+    then 
+       sbatch -J "${VITON_Name}_${run_number}" -o "$output" -e "$error" slurms/viton/fs_vton/pb_gen.slurm
+    fi 
+
+    if [ "$task" == "PF_Warp" ]
+    then 
+       sbatch -J "${VITON_Name}_${run_number}" -o "$output" -e "$error" slurms/viton/fs_vton/pf_warp.slurm
+    fi 
+
+    if [ "$task" == "PF_Gen" ]
+    then 
+        sbatch -J "${VITON_Name}_${run_number}" -o "$output" -e "$error" slurms/viton/fs_vton/pf_gen.slurm
+    fi 
+fi
+
+
 if [ "$VITON_Name" == "HR_VITON" ]
 then 
     if [ "$task" == "TOCG" ]
@@ -97,6 +121,18 @@ then
     fi 
 fi
 
+if [ "$VITON_Name" == "SD_VITON" ]
+then 
+    if [ "$task" == "TOCG" ]
+    then 
+        sbatch -J "${VITON_Name}_${run_number}" -o "$output" -e "$error" slurms/viton/sd_viton/tocg_sd_viton.slurm
+    fi 
+
+    if [ "$task" == "GEN" ]
+    then 
+       sbatch -J "${VITON_Name}_${run_number}" -o "$output" -e "$error" slurms/viton/sd_viton/gen_sd_viton.slurm
+    fi 
+fi
 
 if [ "$VITON_Name" == "ACGPN" ]
 then 
