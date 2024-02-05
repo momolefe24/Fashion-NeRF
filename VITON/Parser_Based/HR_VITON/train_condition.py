@@ -367,21 +367,13 @@ def train_model(opt,root_opt, train_loader, test_loader, validation_loader, boar
                 fake_clothmask = (torch.argmax(fake_segmap.detach(), dim=1, keepdim=True) == 3).long()
                 misalign = fake_clothmask - warped_cm_onehot
                 misalign[misalign < 0.0] = 0.0
-                
-                # for i in range(opt.num_test_visualize):
-                #     grid = make_grid([(c_paired[i].cpu() / 2 + 0.5), (cm_paired[i].cpu()).expand(3, -1, -1), visualize_segmap(parse_agnostic.cpu(), batch=i), ((densepose.cpu()[i]+1)/2),
-                #                     (im_c[i].cpu() / 2 + 0.5), parse_cloth_mask[i].cpu().expand(3, -1, -1), (warped_cloth_paired[i].cpu().detach() / 2 + 0.5), (warped_cm_onehot[i].cpu().detach()).expand(3, -1, -1),
-                #                     visualize_segmap(label.cpu(), batch=i), visualize_segmap(fake_segmap.cpu(), batch=i), (im[i]/2 +0.5), (misalign[i].cpu().detach()).expand(3, -1, -1)],
-                #                         nrow=4)
-                #     board.add_images(f'test_images/{i}', grid.unsqueeze(0), step + 1)
                 tocg.train()
         
         # display
         if (step + 1) % opt.save_period == 0:
             t = time.time() - iter_start_time
-            if not opt.no_GAN_loss:
-                print("step: %8d, time: %.3f\nloss G: %.4f, L1_cloth loss: %.4f, VGG loss: %.4f, TV loss: %.4f CE: %.4f, G GAN: %.4f\nloss D: %.4f, D real: %.4f, D fake: %.4f"
-                    % (step + 1, t, loss_G.item(), loss_l1_cloth.item(), loss_vgg.item(), loss_tv.item(), CE_loss.item(), loss_G_GAN.item(), loss_D.item(), loss_D_real.item(), loss_D_fake.item()), flush=True)
+            print("step: %8d, time: %.3f\nloss G: %.4f, L1_cloth loss: %.4f, VGG loss: %.4f, TV loss: %.4f CE: %.4f, G GAN: %.4f\nloss D: %.4f, D real: %.4f, D fake: %.4f"
+                % (step + 1, t, loss_G.item(), loss_l1_cloth.item(), loss_vgg.item(), loss_tv.item(), CE_loss.item(), loss_G_GAN.item(), loss_D.item(), loss_D_real.item(), loss_D_fake.item()), flush=True)
             save_checkpoint(tocg,opt.tocg_save_step_checkpoint % (step + 1), opt)
             save_checkpoint(D,opt.tocg_discriminator_save_step_checkpoint % (step + 1), opt)
 
@@ -576,53 +568,56 @@ def validate_tocg(opt, step, tocg,D, validation_loader,board,wandb):
                 
                 loss_D = loss_D_fake + loss_D_real
                 
-            board.add_scalar('Val/warping_loss', loss_G.item(), step + 1)
-            board.add_scalar('Val/warping_l1', loss_l1_cloth.item(), step + 1)
-            board.add_scalar('Val/warping_vgg', loss_vgg.item(), step + 1)
-            board.add_scalar('Val/warping_total_variation_loss', loss_tv.item(), step + 1)
-            board.add_scalar('Val/warping_cross_entropy_loss', CE_loss.item(), step + 1)
+        board.add_scalar('Val/warping_loss', loss_G.item(), step + 1)
+        board.add_scalar('Val/warping_l1', loss_l1_cloth.item(), step + 1)
+        board.add_scalar('Val/warping_vgg', loss_vgg.item(), step + 1)
+        board.add_scalar('Val/warping_total_variation_loss', loss_tv.item(), step + 1)
+        board.add_scalar('Val/warping_cross_entropy_loss', CE_loss.item(), step + 1)
 # Wandb     
-            if not opt.no_GAN_loss:
-                board.add_scalar('Val/gan', loss_G_GAN.item(), step + 1)
-                # loss D
-                board.add_scalar('Val/discriminator', loss_D.item(), step + 1)
-                board.add_scalar('Val/pred_real', loss_D_real.item(), step + 1)
-                board.add_scalar('Val/pred_fake', loss_D_fake.item(), step + 1)
-            save_image(warped_cloth_paired, os.path.join(opt.results_dir,'val', f'warped_cloth_paired_{step}.png'))
-            grid = make_grid([(c_paired[0].cpu() / 2 + 0.5), (cm_paired[0].cpu()).expand(3, -1, -1), visualize_segmap(parse_agnostic.cpu()), ((densepose.cpu()[0]+1)/2),
-                              (im_c[0].cpu() / 2 + 0.5), parse_cloth_mask[0].cpu().expand(3, -1, -1), (warped_cloth_paired[0].cpu().detach() / 2 + 0.5), (warped_cm_onehot[0].cpu().detach()).expand(3, -1, -1),
-                              visualize_segmap(label.cpu()), visualize_segmap(fake_segmap.cpu()), (im[0]/2 +0.5), (misalign[0].cpu().detach()).expand(3, -1, -1)],
-                                nrow=4)
-            board.add_images('valid_images', grid.unsqueeze(0), step + 1)
-            board.add_image('Val/Image', (im_c[0].cpu() / 2 + 0.5), 0)
-            board.add_image('Val/Pose Image', (openpose[0].cpu() / 2 + 0.5), 0)
-            board.add_image('Val/Clothing', (c_paired[0].cpu() / 2 + 0.5), 0)
-            board.add_image('Val/Parse Clothing', (im_c[0].cpu() / 2 + 0.5), 0)
-            board.add_image('Val/Parse Clothing Mask', parse_cloth_mask[0].cpu().expand(3, -1, -1), 0)
-            board.add_image('Val/Warped Cloth', (warped_cloth_paired[0].cpu().detach() / 2 + 0.5), 0)
-            board.add_image('Val/Warped Cloth Mask', warped_clothmask_paired[0].cpu().detach().expand(3, -1, -1), 0)
-            if wandb is not None:
-                my_table = wandb.Table(columns=['Image', 'Pose Image','Clothing','Parse Clothing','Parse Clothing Mask','Warped Cloth','Warped Cloth Mask'])
-                image_wandb = get_wandb_image((im_c[0].cpu() / 2 + 0.5),wandb) # 'Image'
-                pose_image_wandb = get_wandb_image((openpose[0].cpu() / 2 + 0.5),wandb) # 'Pose Image'
-                clothing_wandb = get_wandb_image((c_paired[0].cpu() / 2 + 0.5), wandb) # 'Clothing'
-                parse_clothing_wandb = get_wandb_image((im_c[0].cpu() / 2 + 0.5), wandb) # 'Parse Clothing'
-                parse_clothing_mask_wandb = get_wandb_image(parse_cloth_mask[0].cpu().expand(3, -1, -1), wandb) # 'Parse Clothing Mask'
-                warped_cloth_wandb = get_wandb_image((warped_cloth_paired[0].cpu().detach() / 2 + 0.5), wandb) # 'Warped Cloth'
-                warped_clothmask_paired_wandb = get_wandb_image((warped_clothmask_paired[0].cpu().detach()).expand(3, -1, -1), wandb) # 'Warped Cloth Mask'
-                my_table.add_data(image_wandb, pose_image_wandb, clothing_wandb, parse_clothing_wandb, parse_clothing_mask_wandb, warped_cloth_wandb,warped_clothmask_paired_wandb)
-                wandb.log({'Val_Table': my_table, 'val_warping_loss': loss_G.item()
-                ,'val_warping_l1':loss_l1_cloth.item()
-                ,'val_warping_vgg':loss_vgg.item()
-                ,'val_warping_total_variation_loss':loss_tv.item()
-                ,'val_warping_cross_entropy_loss':CE_loss.item()})
-                
-            # calculate iou
-            iou = iou_metric(F.softmax(fake_segmap, dim=1).detach(), label)
-            iou_list.append(iou.item())
-            wandb.log({'val_iou':np.mean(iou_list) })
-            board.add_scalar('val_iou', np.mean(iou_list), step + 1)  
-          
+        if not opt.no_GAN_loss:
+            board.add_scalar('Val/gan', loss_G_GAN.item(), step + 1)
+            # loss D
+            board.add_scalar('Val/discriminator', loss_D.item(), step + 1)
+            board.add_scalar('Val/pred_real', loss_D_real.item(), step + 1)
+            board.add_scalar('Val/pred_fake', loss_D_fake.item(), step + 1)
+        save_image(warped_cloth_paired, os.path.join(opt.results_dir,'val', f'warped_cloth_paired_{step}.png'))
+        grid = make_grid([(c_paired[0].cpu() / 2 + 0.5), (cm_paired[0].cpu()).expand(3, -1, -1), visualize_segmap(parse_agnostic.cpu()), ((densepose.cpu()[0]+1)/2),
+                            (im_c[0].cpu() / 2 + 0.5), parse_cloth_mask[0].cpu().expand(3, -1, -1), (warped_cloth_paired[0].cpu().detach() / 2 + 0.5), (warped_cm_onehot[0].cpu().detach()).expand(3, -1, -1),
+                            visualize_segmap(label.cpu()), visualize_segmap(fake_segmap.cpu()), (im[0]/2 +0.5), (misalign[0].cpu().detach()).expand(3, -1, -1)],
+                            nrow=4)
+        board.add_images('valid_images', grid.unsqueeze(0), step + 1)
+        board.add_image('Val/Image', (im_c[0].cpu() / 2 + 0.5), 0)
+        board.add_image('Val/Pose Image', (openpose[0].cpu() / 2 + 0.5), 0)
+        board.add_image('Val/Clothing', (c_paired[0].cpu() / 2 + 0.5), 0)
+        board.add_image('Val/Parse Clothing', (im_c[0].cpu() / 2 + 0.5), 0)
+        board.add_image('Val/Parse Clothing Mask', parse_cloth_mask[0].cpu().expand(3, -1, -1), 0)
+        board.add_image('Val/Warped Cloth', (warped_cloth_paired[0].cpu().detach() / 2 + 0.5), 0)
+        board.add_image('Val/Warped Cloth Mask', warped_clothmask_paired[0].cpu().detach().expand(3, -1, -1), 0)
+        if wandb is not None:
+            my_table = wandb.Table(columns=['Image', 'Pose Image','Clothing','Parse Clothing','Parse Clothing Mask','Warped Cloth','Warped Cloth Mask'])
+            image_wandb = get_wandb_image((im_c[0].cpu() / 2 + 0.5),wandb) # 'Image'
+            pose_image_wandb = get_wandb_image((openpose[0].cpu() / 2 + 0.5),wandb) # 'Pose Image'
+            clothing_wandb = get_wandb_image((c_paired[0].cpu() / 2 + 0.5), wandb) # 'Clothing'
+            parse_clothing_wandb = get_wandb_image((im_c[0].cpu() / 2 + 0.5), wandb) # 'Parse Clothing'
+            parse_clothing_mask_wandb = get_wandb_image(parse_cloth_mask[0].cpu().expand(3, -1, -1), wandb) # 'Parse Clothing Mask'
+            warped_cloth_wandb = get_wandb_image((warped_cloth_paired[0].cpu().detach() / 2 + 0.5), wandb) # 'Warped Cloth'
+            warped_clothmask_paired_wandb = get_wandb_image((warped_clothmask_paired[0].cpu().detach()).expand(3, -1, -1), wandb) # 'Warped Cloth Mask'
+            my_table.add_data(image_wandb, pose_image_wandb, clothing_wandb, parse_clothing_wandb, parse_clothing_mask_wandb, warped_cloth_wandb,warped_clothmask_paired_wandb)
+            wandb.log({'Val_Table': my_table, 'val_warping_loss': loss_G.item()
+            ,'val_warping_l1':loss_l1_cloth.item()
+            ,'val_warping_vgg':loss_vgg.item()
+            ,'val_warping_total_variation_loss':loss_tv.item()
+            ,'val_warping_cross_entropy_loss':CE_loss.item()})
+            
+        # calculate iou
+        iou = iou_metric(F.softmax(fake_segmap, dim=1).detach(), label)
+        iou_list.append(iou.item())
+        wandb.log({'val_iou':np.mean(iou_list) })
+        board.add_scalar('val_iou', np.mean(iou_list), step + 1)  
+        print("validation step: %8d \nloss G: %.4f, L1_cloth loss: %.4f, VGG loss: %.4f, TV loss: %.4f CE: %.4f, G GAN: %.4f\nloss D: %.4f, D real: %.4f, D fake: %.4f"
+                % (step + 1, loss_G.item(), loss_l1_cloth.item(), loss_vgg.item(), loss_tv.item(), CE_loss.item(), loss_G_GAN.item(), loss_D.item(), loss_D_real.item(), loss_D_fake.item()), flush=True)
+        print()
+        
 def print_log(log_path, content, to_print=True):
     import os
     if os.path.exists(log_path):
