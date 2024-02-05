@@ -22,21 +22,6 @@ source ~/.bashrc
 conda activate NeRF
 export CUDA_VISIBLE_DEVICES=0
 echo "Launching the script ${SLURM_JOB_NAME}"
-# ./scripts/viton/viton.sh $SLURM_JOB_NAME {experiment_number}  {run_number} {experiment_from}  {run_number_from}
-# ./scripts/viton/viton.sh $SLURM_JOB_NAME 1 6 1 6
-
-
-# export EXPERIMENT_NUMBER=10
-# export EXPERIMENT_FROM_NUMBER=0
-# export RUN_NUMBER=99
-# export RUN_FROM_NUMBER=0
-# # export SEED=1
-# export DATASET_NAME=Original
-# export TASK="TOM"
-# export DEBUG=1
-# export DATAMODE=train
-# export VITON_NAME=CP_VTON_plus
-
 echo "Start Debug: $DEBUG"
 echo "Experiment Number: $EXPERIMENT_NUMBER"
 echo "Run Number: $RUN_NUMBER"

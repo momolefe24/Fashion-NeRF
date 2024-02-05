@@ -27,8 +27,8 @@ low_res_viton_dataset_name: "VITON-Clean"
 dataset_name: "Original"
 test_dataroot: /data/
 test_data_list: test_pairs.txt
-fine_width: 768 # [tocg: 192, gen: 768]
-fine_height: 1024 # [tocg: 256, gen: 1024]
+fine_width: 192 # [tocg: 192, gen: 768]
+fine_height: 256 # [tocg: 256, gen: 1024]
 
 # ========================= VITON information
 VITON_Type: "Parser_Based"

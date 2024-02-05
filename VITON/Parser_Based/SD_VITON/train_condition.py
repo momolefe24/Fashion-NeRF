@@ -71,7 +71,7 @@ def train_model(opt, train_loader, validation_loader, board, tocg, D, wandb=None
         parse_cloth_mask = inputs['pcm'].cuda()  # L1
         im_c = inputs['parse_cloth'].cuda()  # VGG
         # visualization
-        im = inputs['image']
+        im = inputs['image'].cuda()
         # tucked-out shirts style
         lower_clothes_mask = inputs['lower_clothes_mask'].cuda()
         clothes_no_loss_mask = inputs['clothes_no_loss_mask'].cuda()
@@ -196,11 +196,7 @@ def train_model(opt, train_loader, validation_loader, board, tocg, D, wandb=None
         
         optimizer_D.zero_grad()
         loss_D.backward()
-        optimizer_D.step()
-        if (step + 1) % opt.val_count == 0:
-            validate_tocg(opt, step, tocg,D, validation_loader,board,wandb)
-            tocg.train()    
-            
+        optimizer_D.step()    
         # display
         if (step + 1) % opt.display_count == 0:
 
@@ -224,48 +220,78 @@ def train_model(opt, train_loader, validation_loader, board, tocg, D, wandb=None
             i_0 = torch.cat((i_0[0],i_0[0],i_0[0]), dim=0) 
 
             combine = torch.cat((a_0, b_0, c_0, d_0, e_0, f_0, g_0, h_0, i_0), dim=2)
-            board.add_image('Image', (b_0[0].cpu() / 2 + 0.5), 0)
-            board.add_image('Pose Image', (openpose[0].cpu() / 2 + 0.5), 0)
-            board.add_image('Clothing', (a_0[0].cpu() / 2 + 0.5), 0)
-            board.add_image('Parse Clothing', (im_c[0].cpu() / 2 + 0.5), 0)
-            board.add_image('Parse Clothing Mask', parse_cloth_mask[0].cpu().expand(3, -1, -1), 0)
-            board.add_image('Warped Cloth TVOB', (c_0[0].cpu().detach() / 2 + 0.5), 0)
-            board.add_image('Warped Cloth TACO', (d_0[0].cpu().detach() / 2 + 0.5), 0)
-            board.add_scalar('warping_loss', loss_G.item(),0)
-            board.add_scalar('warping_l1',loss_l1_cloth.item(),0)
-            board.add_scalar('warping_vgg',loss_vgg.item(),0)
-            board.add_scalar('warping_cross_entropy_loss',CE_loss.item(),0)
-            if wandb is not None:
-                my_table = wandb.Table(columns=['Image', 'Pose Image','Clothing','Parse Clothing','Parse Clothing Mask','Warped Cloth','Warped Cloth TACO','Warped Cloth Mask'])
-                grid_wandb = get_wandb_image(grid, wandb)
-                image_wandb = get_wandb_image((b_0[0].cpu() / 2 + 0.5),wandb) # 'Image'
-                pose_image_wandb = get_wandb_image((openpose[0].cpu() / 2 + 0.5),wandb) # 'Pose Image'
-                clothing_wandb = get_wandb_image((a_0[0].cpu() / 2 + 0.5), wandb) # 'Clothing'
-                parse_clothing_wandb = get_wandb_image((im_c[0].cpu() / 2 + 0.5), wandb) # 'Parse Clothing'
-                parse_clothing_mask_wandb = get_wandb_image(parse_cloth_mask[0].cpu().expand(3, -1, -1), wandb) # 'Parse Clothing Mask'
-                warped_cloth_tvob_wandb = get_wandb_image((c_0[0].cpu().detach() / 2 + 0.5), wandb) # 'Warped Cloth' TVOB
-                warped_cloth_taco_wandb = get_wandb_image((d_0[0].cpu().detach() / 2 + 0.5), wandb) # 'Warped Cloth' TACO
-                warped_clothmask_paired_wandb = get_wandb_image((warped_cloth_tvob_wandb[0].cpu().detach()).expand(3, -1, -1), wandb) # 'Warped Cloth Mask'
-                my_table.add_data(image_wandb, pose_image_wandb, clothing_wandb, parse_clothing_wandb, parse_clothing_mask_wandb, warped_cloth_tvob_wandb,warped_cloth_taco_wandb,warped_clothmask_paired_wandb)
-                wandb.log({'Table': my_table, 
-                'warping_loss': loss_G.item()
-                ,'warping_l1':loss_l1_cloth.item()
-                ,'warping_vgg':loss_vgg.item()
-                ,'warping_cross_entropy_loss':CE_loss.item()})
+            log_losses = {'warping_loss': loss_G.item(),    
+            'warping_l1': loss_l1_cloth.item(),'warping_vgg': loss_vgg.item(),'warping_cross_entropy_loss': CE_loss.item(),
+            'TV_tvob':loss_tv_tvob.item(),
+            'TV_taco':loss_tv_taco.item(),
+            'warping_cross_entropy_loss': CE_loss.item(), 
+            'gan': loss_G_GAN.item(),
+            'discriminator':loss_D.item(), 
+            'pred_real': loss_D_real.item(), 
+            'pred_fake':loss_D_fake.item(), 
+            'z_non_roi':z_dist_loss_non_roi,'z_roi': z_dist_loss_roi
+            }
+            log_images = {
+            'Image': (b_0.cpu() / 2 + 0.5),
+            'Pose Image': (openpose[0].cpu() / 2 + 0.5),
+            'Clothing': (a_0.cpu() / 2 + 0.5),
+            'Parse Clothing': (im_c[0].cpu() / 2 + 0.5),
+            'Parse Clothing Mask': parse_cloth_mask[0].cpu().expand(3, -1, -1),
+            'Warped Cloth TVOB': (c_0.cpu().detach() / 2 + 0.5),
+            'Warped Cloth TACO': (d_0.cpu().detach() / 2 + 0.5),
+            'Warped Cloth Mask TVOB': warped_clothmask_paired_tvob[0].cpu().detach().expand(3, -1, -1),
+            'Warped Cloth Mask TACO': warped_clothmask_paired_taco[0].cpu().detach().expand(3, -1, -1)}
+            log_results(log_images, log_losses, board,wandb, step, iter_start_time=iter_start_time, train=True)
             cv_img=(combine.permute(1,2,0).detach().cpu().numpy()+1)/2
             rgb=(cv_img*255).astype(np.uint8)
             bgr=cv2.cvtColor(rgb,cv2.COLOR_RGB2BGR)
             cv2.imwrite(os.path.join(opt.results_dir, f'warped_cloth_paired_{step}.png'),bgr)
+        if (step + 1) % opt.val_count == 0:
+            validate_tocg(opt, step, tocg,D, validation_loader,board,wandb)
+            tocg.train()    
+        if (step + 1) % opt.save_period == 0:
+            save_checkpoint(tocg,opt.tocg_save_step_checkpoint % (step + 1))
+            save_checkpoint(D,opt.tocg_discriminator_save_step_checkpoint % (step + 1))
+
+def log_results(log_images, log_losses, board,wandb, step, iter_start_time=None, train=True):
+    table = 'Table' if train else 'Val_Table'
+    wandb_images = []
+    for key,value in log_losses.items():
+        board.add_scalar(key, value, step+1)
         
+    for key,value in log_images.items():
+        board.add_image(key, value, step+1)
+        if wandb is not None:
+            wandb_images.append(get_wandb_image(value, wandb=wandb))
 
-        if (step + 1) % opt.display_count == 0:
-            t = time.time() - iter_start_time            
-            print("step: %8d, time: %.3f\nloss G: %.4f, L1_cloth loss: %.4f, VGG loss: %.4f, TV_tvob loss: %.4f, TV_taco loss: %.4f, CE: %.4f, G GAN: %.4f\nloss D: %.4f, D real: %.4f, D fake: %.4f, z_non_roi: %.4f, z_roi: %.4f"
-                % (step + 1, t, loss_G.item(), loss_l1_cloth.item(), loss_vgg.item(), loss_tv_tvob.item(), loss_tv_taco.item(), CE_loss.item(), loss_G_GAN.item(), loss_D.item(), loss_D_real.item(), loss_D_fake.item(), z_dist_loss_non_roi, z_dist_loss_roi), flush=True)
-            save_checkpoint(tocg,opt.tocg_save_step_checkpoint % (step + 1), opt)
-            save_checkpoint(D,opt.tocg_discriminator_save_step_checkpoint % (step + 1), opt)
-
-
+    if wandb is not None:
+        my_table = wandb.Table(columns=['Image', 'Pose Image','Clothing','Parse Clothing','Parse Clothing Mask','Warped Cloth','Warped Cloth TACO','Warped Cloth Mask TVOB','Warped Cloth Mask TACO'])
+        my_table.add_data(*wandb_images)
+        wandb.log({table: my_table, **log_losses})
+    if train and iter_start_time is not None:
+        t = time.time() - iter_start_time
+        print("training step: %8d, time: %.3f\nloss G: %.4f, L1_cloth loss: %.4f, VGG loss: %.4f, TV_tvob loss: %.4f, TV_taco loss: %.4f, CE: %.4f, G GAN: %.4f\n z_non_roi: %.4f, z_roi: %.4f"
+      % (step + 1, t, 
+         log_losses['warping_loss'], 
+         log_losses['warping_l1'], 
+         log_losses['warping_vgg'], 
+         log_losses['TV_tvob'], 
+         log_losses['TV_taco'], 
+         log_losses['warping_cross_entropy_loss'],
+         log_losses['gan'],
+         log_losses['z_non_roi'],log_losses['z_roi']), flush=True)
+    else:
+        print("validation step: %8d, \nloss G: %.4f, L1_cloth loss: %.4f, VGG loss: %.4f, TV_tvob loss: %.4f, TV_taco loss: %.4f, CE: %.4f, G GAN: %.4f\n z_non_roi: %.4f, z_roi: %.4f"
+      % (step + 1, 
+         log_losses['val_warping_loss'], 
+         log_losses['val_warping_l1'], 
+         log_losses['val_warping_vgg'], 
+         log_losses['val_TV_tvob'], 
+         log_losses['val_TV_taco'], 
+         log_losses['val_warping_cross_entropy_loss'],
+         log_losses['val_gan'],
+         log_losses['val_z_non_roi'],log_losses['val_z_roi']), flush=True)
+        
 def validate_tocg(opt, step, tocg,D, validation_loader,board,wandb):
     # Model
     tocg.eval()
@@ -277,10 +303,20 @@ def validate_tocg(opt, step, tocg,D, validation_loader,board,wandb):
         criterionGAN = GANLoss(use_lsgan=True, tensor=torch.cuda.HalfTensor)
     else :
         criterionGAN = GANLoss(use_lsgan=True, tensor=torch.cuda.FloatTensor if opt.gpu_ids else torch.Tensor)
-
-
+    val_warping_loss =  0
+    val_warping_l1 = 0
+    val_warping_vgg= 0 
+    val_warping_cross_entropy_loss =0
+    val_TV_tvob =0
+    val_TV_taco =0
+    val_warping_cross_entropy_loss =0
+    val_gan =0
+    val_z_non_roi =0
+    val_z_roi =0
+    total_batches = len(validation_loader.dataset) // opt.viton_batch_size
+    processed_batches = 0
     with torch.no_grad():
-        for step in tqdm(range(opt.niter + opt.niter_decay)):
+        while processed_batches < total_batches:
             inputs = validation_loader.next_batch()
 
             # input1
@@ -422,41 +458,41 @@ def validate_tocg(opt, step, tocg,D, validation_loader,board,wandb):
             h_0 = torch.cat((h_0[0],h_0[0],h_0[0]), dim=0) 
 
             i_0 = inv_lower_clothes_mask
-            i_0 = torch.cat((i_0[0],i_0[0],i_0[0]), dim=0) 
-
+            i_0 = torch.cat((i_0[0],i_0[0],i_0[0]), dim=0)
+            val_warping_loss += loss_G.item()
+            val_warping_l1 += loss_l1_cloth.item()
+            val_warping_vgg += loss_vgg.item()
+            val_warping_cross_entropy_loss += CE_loss.item()
+            val_TV_tvob += loss_tv_tvob.item()
+            val_TV_taco += loss_tv_taco.item()
+            val_gan +=  loss_G_GAN.item()
+            val_z_non_roi += z_dist_loss_non_roi.item()
+            val_z_roi += z_dist_loss_roi.item()
+            processed_batches += 1
             combine = torch.cat((a_0, b_0, c_0, d_0, e_0, f_0, g_0, h_0, i_0), dim=2)
-            board.add_image('Val/Image', (b_0[0].cpu() / 2 + 0.5), 0)
-            board.add_image('Val/Pose Image', (openpose[0].cpu() / 2 + 0.5), 0)
-            board.add_image('Val/Clothing', (a_0[0].cpu() / 2 + 0.5), 0)
-            board.add_image('Val/Parse Clothing', (im_c[0].cpu() / 2 + 0.5), 0)
-            board.add_image('Val/Parse Clothing Mask', parse_cloth_mask[0].cpu().expand(3, -1, -1), 0)
-            board.add_image('Val/Warped Cloth TVOB', (c_0[0].cpu().detach() / 2 + 0.5), 0)
-            board.add_image('Val/Warped Cloth TACO', (d_0[0].cpu().detach() / 2 + 0.5), 0)
-            board.add_scalar('Val/warping_loss', loss_G.item(),0)
-            board.add_scalar('Val/warping_l1',loss_l1_cloth.item(),0)
-            board.add_scalar('Val/warping_vgg',loss_vgg.item(),0)
-            board.add_scalar('Val/warping_cross_entropy_loss',CE_loss.item(),0)
-            if wandb is not None:
-                my_table = wandb.Table(columns=['Image', 'Pose Image','Clothing','Parse Clothing','Parse Clothing Mask','Warped Cloth','Warped Cloth TACO','Warped Cloth Mask'])
-                grid_wandb = get_wandb_image(grid, wandb)
-                image_wandb = get_wandb_image((b_0[0].cpu() / 2 + 0.5),wandb) # 'Image'
-                pose_image_wandb = get_wandb_image((openpose[0].cpu() / 2 + 0.5),wandb) # 'Pose Image'
-                clothing_wandb = get_wandb_image((a_0[0].cpu() / 2 + 0.5), wandb) # 'Clothing'
-                parse_clothing_wandb = get_wandb_image((im_c[0].cpu() / 2 + 0.5), wandb) # 'Parse Clothing'
-                parse_clothing_mask_wandb = get_wandb_image(parse_cloth_mask[0].cpu().expand(3, -1, -1), wandb) # 'Parse Clothing Mask'
-                warped_cloth_tvob_wandb = get_wandb_image((c_0[0].cpu().detach() / 2 + 0.5), wandb) # 'Warped Cloth' TVOB
-                warped_cloth_taco_wandb = get_wandb_image((d_0[0].cpu().detach() / 2 + 0.5), wandb) # 'Warped Cloth' TACO
-                warped_clothmask_paired_wandb = get_wandb_image((warped_cloth_tvob_wandb[0].cpu().detach()).expand(3, -1, -1), wandb) # 'Warped Cloth Mask'
-                my_table.add_data(image_wandb, pose_image_wandb, clothing_wandb, parse_clothing_wandb, parse_clothing_mask_wandb, warped_cloth_tvob_wandb,warped_cloth_taco_wandb,warped_clothmask_paired_wandb)
-                wandb.log({'Val_Table': my_table, 
-                'val_warping_loss': loss_G.item()
-                ,'val_warping_l1':loss_l1_cloth.item()
-                ,'val_warping_vgg':loss_vgg.item()
-                ,'val_warping_cross_entropy_loss':CE_loss.item()})
-            cv_img=(combine.permute(1,2,0).detach().cpu().numpy()+1)/2
-            rgb=(cv_img*255).astype(np.uint8)
-            bgr=cv2.cvtColor(rgb,cv2.COLOR_RGB2BGR)
-            cv2.imwrite(os.path.join(opt.results_dir, f'warped_cloth_paired_{step}.png'),bgr)
+        log_losses = {'val_warping_loss': val_warping_loss / len(validation_loader.dataset),    
+        'val_warping_l1': val_warping_l1 / len(validation_loader.dataset),'val_warping_vgg': val_warping_vgg / len(validation_loader.dataset),
+        'val_warping_cross_entropy_loss': val_warping_cross_entropy_loss / len(validation_loader.dataset),
+        'val_TV_tvob': val_TV_tvob / len(validation_loader.dataset),
+        'val_TV_taco': val_TV_taco / len(validation_loader.dataset),
+        'val_gan': val_gan / len(validation_loader.dataset),
+        'val_z_non_roi':val_z_non_roi / len(validation_loader.dataset),'val_z_roi': val_z_roi / len(validation_loader.dataset)
+        }
+        log_images = {
+        'Val/Image': (b_0.cpu() / 2 + 0.5),
+        'Val/Pose Image': (openpose[0].cpu() / 2 + 0.5),
+        'Val/Clothing': (a_0.cpu() / 2 + 0.5),
+        'Val/Parse Clothing': (im_c[0].cpu() / 2 + 0.5),
+        'Val/Parse Clothing Mask': parse_cloth_mask[0].cpu().expand(3, -1, -1),
+        'Val/Warped Cloth TVOB': (c_0.cpu().detach() / 2 + 0.5),
+        'Val/Warped Cloth TACO': (d_0.cpu().detach() / 2 + 0.5),
+        'Val/Warped Cloth Mask TVOB': warped_clothmask_paired_tvob[0].cpu().detach().expand(3, -1, -1),
+        'Val/Warped Cloth Mask TACO': warped_clothmask_paired_taco[0].cpu().detach().expand(3, -1, -1)}
+        log_results(log_images, log_losses, board,wandb, step, train=False)
+        cv_img=(combine.permute(1,2,0).detach().cpu().numpy()+1)/2
+        rgb=(cv_img*255).astype(np.uint8)
+        bgr=cv2.cvtColor(rgb,cv2.COLOR_RGB2BGR)
+        cv2.imwrite(os.path.join(opt.results_dir, f'warped_cloth_paired_{step}.png'),bgr)
 
         
             
