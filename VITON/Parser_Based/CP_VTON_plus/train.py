@@ -204,7 +204,7 @@ def train_gmm(opt, train_loader, validation_loader, model, board, wandb=None):
                 'Warped Cloth': warped_cloth[0].cpu().detach() / 2 + 0.5,
                 'Warped Cloth Mask': warped_mask[0].cpu().detach() / 2 + 0.5,
             }
-            log_losses = {'warping_loss':loss, 'l1_cloth':Lwarp}
+            log_losses = {'warping_loss':loss, 'warping_l1':Lwarp}
             log_results(log_images,log_losses, board,wandb, step, iter_start_time=iter_start_time, train=True)
             # break
         if (step + 1) % opt.val_count == 0:
@@ -284,7 +284,7 @@ def validate_gmm(validation_loader,model, board, step, wandb=wandb):
             processed_batches += 1
         val_loss = val_loss / len(validation_loader.dataset)  
         val_Lwarp = val_Lwarp / len(validation_loader.dataset)  
-        log_losses = {'val_warping_loss':val_loss, 'val_l1_cloth':val_Lwarp}
+        log_losses = {'val_warping_loss':val_loss, 'val_warping_l1':val_Lwarp}
         log_images = {
                     'Val/Image': im[0].cpu().detach() / 2 + 0.5,
                     'Val/Pose Image': im_pose[0].cpu().detach() / 2 + 0.5,

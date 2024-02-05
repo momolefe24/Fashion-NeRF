@@ -21,23 +21,12 @@ nvidia-smi
 source ~/.bashrc
 conda activate NeRF
 echo "Launching the script ${SLURM_JOB_NAME}"
-# ./scripts/viton/viton.sh $SLURM_JOB_NAME {experiment_number}  {run_number} {experiment_from}  {run_number_from}
-# ./scripts/viton/viton.sh $SLURM_JOB_NAME 1 6 1 6
-
-
-
 echo "Start Debug: $DEBUG"
 echo "Experiment Number: $EXPERIMENT_NUMBER"
 echo "Run Number: $RUN_NUMBER"
 echo "Dataset Name: $DATASET_NAME"
 echo "Device: $DEVICE"
 export CUDA_VISIBLE_DEVICES=$DEVICE
-
-# parser_based_warp_experiment_from_number 1 - Original
-# parser_based_warp_experiment_from_number 2 - Rail
-
-
-
 
 # Parser_Based Warping
 ./scripts/viton/viton.sh --job_name $VITON_NAME --task $TASK --experiment_number $EXPERIMENT_NUMBER --run_number $RUN_NUMBER \
