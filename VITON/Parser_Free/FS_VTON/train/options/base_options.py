@@ -1,6 +1,6 @@
 import argparse
 import os
-from util import util
+from VITON.Parser_Free.FS_VTON.train.util import util
 import torch
 
 class BaseOptions():

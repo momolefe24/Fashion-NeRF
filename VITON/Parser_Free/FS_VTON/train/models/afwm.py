@@ -3,8 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
 from math import sqrt
-from options.train_options import TrainOptions
-opt = TrainOptions().parse()
+
 
 def apply_offset(offset):
     sizes = list(offset.size()[2:])

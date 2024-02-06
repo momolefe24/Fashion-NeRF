@@ -1,8 +1,9 @@
 import time
 import yaml
-from options.train_options import TrainOptions
-from models.networks import VGGLoss,save_checkpoint
-from models.afwm import TVLoss,AFWM
+from VITON.Parser_Free.FS_VTON.train.options.train_options import TrainOptions
+# from VITON.Parser_Free.FS_VTON.train.models.networks import VGGLoss,save_checkpoint
+from VITON.Parser_Free.PF_AFN.PF_AFN_train.models.networks import VGGLoss, save_checkpoint
+from VITON.Parser_Free.FS_VTON.train.models.afwm import TVLoss,AFWM
 import torch.nn as nn
 import argparse
 import torch.nn.functional as F
@@ -84,6 +85,8 @@ def split_dataset(dataset,train_size=0.8):
     return train_subset, validation_subset
 
 def make_dirs(opt):
+    if not os.path.exists(opt.tensorboard_dir):
+        os.makedirs(opt.tensorboard_dir)
     if not os.path.exists(opt.results_dir):
         os.makedirs(opt.results_dir)
     if not os.path.exists(opt.pb_warp_save_step_checkpoint_dir):
@@ -140,13 +143,11 @@ def _train_fsvton_pb_warp_():
     warp_model.cuda()
     warp_model = torch.nn.SyncBatchNorm.convert_sync_batchnorm(warp_model).to(device)
 
-    if opt.isTrain and len(opt.gpu_ids):
-        model = torch.nn.parallel.DistributedDataParallel(warp_model, device_ids=[opt.local_rank])
 
     criterionL1 = nn.L1Loss()
     criterionVGG = VGGLoss()
 
-    params_warp = [p for p in model.parameters()]
+    params_warp = [p for p in warp_model.parameters()]
     optimizer_warp = torch.optim.Adam(params_warp, lr=opt.lr, betas=(opt.beta1, 0.999))
 
     total_steps = (start_epoch-1) * dataset_size + epoch_iter
@@ -162,9 +163,10 @@ def _train_fsvton_pb_warp_():
                     warp_model,step, total_steps,epoch,criterionL1,criterionVGG,optimizer_warp,
                     writer, step_per_batch)    
         if epoch % opt.val_count == 0:
-            validate_batch(opt, root_opt, validation_loader, 
-                    warp_model,total_valid_steps,epoch,criterionL1,criterionVGG,
-                    writer)
+            with torch.no_grad():
+                validate_batch(opt, root_opt, validation_loader, 
+                        warp_model,total_valid_steps,epoch,criterionL1,criterionVGG,
+                        writer)
     save_checkpoint(warp_model, opt.pb_warp_save_final_checkpoint)
     
 
@@ -176,7 +178,6 @@ def train_batch(opt, train_loader, warp_model,step, total_steps, epoch,criterion
         iter_start_time = time.time()
 
         total_steps += 1
-        epoch_iter += 1
 
         t_mask = torch.FloatTensor((data['label'].cpu().numpy()==7).astype(np.float))
         data['label'] = data['label']*(1-t_mask)+t_mask*4
@@ -243,30 +244,15 @@ def train_batch(opt, train_loader, warp_model,step, total_steps, epoch,criterion
             f = torch.cat([warped_prod_edge,warped_prod_edge,warped_prod_edge],1)
             combine = torch.cat([a[0],b[0],c[0],d[0],e[0],f[0]], 2).squeeze()
             cv_img=(combine.permute(1,2,0).detach().cpu().numpy()+1)/2
-            writer.add_image('combine', (combine.data + 1) / 2.0, step)
-            writer.add_scalar('loss_all', loss_all, step)
-            writer.add_scalar('warping_l1', loss_l1, step)
-            writer.add_scalar('warping_vgg', loss_vgg, step)
-            writer.add_image('Real Image', a[0], 0)
-            writer.add_image('Pose Image', (pose_map[0].cpu() / 2 + 0.5), 0)
-            writer.add_image('Clothing', c[0], 0)
-            writer.add_image('Parse Clothing', (b[0].cpu() / 2 + 0.5), 0)
-            writer.add_image('Parse Clothing Mask', person_clothes_edge[0].cpu().expand(3, -1, -1), 0)
-            writer.add_image('Warped Cloth', (e[0].cpu().detach() / 2 + 0.5), 0)
-            writer.add_image('Warped Cloth Mask', (f[0].cpu().detach()).expand(3, -1, -1), 0)
-            if wandb is not None:
-                my_table = wandb.Table(columns=['Image', 'Pose Image','Clothing','Parse Clothing','Parse Clothing Mask','Warped Cloth','Warped Cloth Mask'])
-                real_image_wandb = get_wandb_image(a[0], wandb=wandb) # 'Image'
-                pose_image_wandb = get_wandb_image((pose_map[0].cpu() / 2 + 0.5),wandb) # 'Pose Image'
-                clothing_image_wandb = get_wandb_image(c[0], wandb=wandb)#'Clothing'
-                parse_clothing_wandb = get_wandb_image((b[0].cpu() / 2 + 0.5), wandb) # 'Parse Clothing'
-                parse_clothing_mask_wandb = get_wandb_image(person_clothes_edge[0].cpu().expand(3, -1, -1), wandb) # 'Parse Clothing Mask'
-                warped_cloth_wandb = get_wandb_image((e[0].cpu().detach() / 2 + 0.5), wandb) # 'Warped Cloth'
-                warped_cloth_mask_wandb = get_wandb_image((f[0].cpu().detach()).expand(3, -1, -1), wandb) # 'Warped Cloth Mask'
-                
-                my_table.add_data(real_image_wandb, pose_image_wandb, clothing_image_wandb, parse_clothing_wandb, parse_clothing_mask_wandb, warped_cloth_wandb, warped_cloth_mask_wandb)
-                
-                wandb.log({'warping_loss': loss_all,'warping_l1':loss_l1,'warping_vgg':loss_vgg,'Table':my_table })
+            log_losses = {'warping_loss': loss_all.item() ,'warping_l1': loss_l1.item(),'warping_vgg': loss_vgg.item()}
+            log_images = {'Image': (a[0].cpu() / 2 + 0.5), 
+            'Pose Image': (pose_map[0].cpu() / 2 + 0.5), 
+            'Clothing': (c[0].cpu() / 2 + 0.5), 
+            'Parse Clothing': (b[0].cpu() / 2 + 0.5), 
+            'Parse Clothing Mask': person_clothes_edge[0].cpu().expand(3, -1, -1), 
+            'Warped Cloth': (e[0].cpu().detach() / 2 + 0.5), 
+            'Warped Cloth Mask': f[0].cpu().detach().expand(3, -1, -1)}
+            log_results(log_images, log_losses, writer,wandb, step, iter_start_time=iter_start_time, train=True)
             rgb=(cv_img*255).astype(np.uint8)
             bgr=cv2.cvtColor(rgb,cv2.COLOR_RGB2BGR)
             cv2.imwrite(os.path.join(opt.results_dir, str(step)+'.jpg'),bgr)
@@ -279,33 +265,32 @@ def train_batch(opt, train_loader, warp_model,step, total_steps, epoch,criterion
         eta = str(datetime.timedelta(seconds=int(eta)))
         time_stamp = datetime.datetime.now()
         now = time_stamp.strftime('%Y.%m.%d-%H:%M:%S')
-        if step % 100 == 0:
-            if opt.local_rank == 0:
-                print('{}:{}:[step-{}]--[loss-{:.6f}]--[ETA-{}]'.format(now, epoch_iter,step, loss_all,eta))
+        if step % opt.print_step == 0:
+            print('{}:{}:[step-{}]--[loss-{:.6f}]--[ETA-{}]'.format(now, epoch,step, loss_all,eta))
 
-        if epoch_iter >= dataset_size:
+        if epoch >= dataset_size:
             break
-    
+        # break
     # end of epoch 
     iter_end_time = time.time()
-
     ### save model for this epoch
     if epoch % opt.save_period == 0:
         print('saving the model at the end of epoch %d, iters %d' % (epoch, total_steps))        
-        save_checkpoint(warp_model.module, os.path.join(opt.checkpoints_dir, opt.name, 'PBAFN_warp_epoch_%03d.pth' % (epoch+1)))
+        save_checkpoint(warp_model, opt.pb_warp_save_step_checkpoint % (epoch+1))
 
     if epoch > opt.niter:
-        warp_model.module.update_learning_rate(optimizer_warp)
+        warp_model.update_learning_rate(optimizer_warp)
 
 
 def validate_batch(opt, root_opt, validation_loader, warp_model,total_steps, epoch,criterionL1,criterionVGG, writer):
     warp_model.eval()
-    total_loss_warping = 0
+    val_warping_loss = 0
+    val_warping_l1 = 0
+    val_warping_vgg = 0
     for i, data in enumerate(validation_loader):
         iter_start_time = time.time()
 
         total_steps += 1
-        epoch_iter += 1
 
         t_mask = torch.FloatTensor((data['label'].cpu().numpy()==7).astype(np.float))
         data['label'] = data['label']*(1-t_mask)+t_mask*4
@@ -359,40 +344,49 @@ def validate_batch(opt, root_opt, validation_loader, warp_model,total_steps, epo
 
         ############## Display results and errors ##########
 
-        total_loss_warping += loss_all.item()
+        val_warping_loss += loss_all.item()    
+        val_warping_l1 += loss_l1.item()
+        val_warping_vgg += loss_vgg.item()
+        a = real_image.float().cuda()
+        b = person_clothes.cuda()
+        c = clothes.cuda()
+        d = torch.cat([densepose_fore.cuda(),densepose_fore.cuda(),densepose_fore.cuda()],1)
+        e = warped_cloth
+        f = torch.cat([warped_prod_edge,warped_prod_edge,warped_prod_edge],1)
+        combine = torch.cat([a[0],b[0],c[0],d[0],e[0],f[0]], 2).squeeze()
+        cv_img=(combine.permute(1,2,0).detach().cpu().numpy()+1)/2
+        rgb=(cv_img*255).astype(np.uint8)
+        bgr=cv2.cvtColor(rgb,cv2.COLOR_RGB2BGR)
+        cv2.imwrite(os.path.join(opt.results_dir, str(epoch)+'.jpg'),bgr)
+    log_losses = {'val_warping_loss': val_warping_loss / len(validation_loader.dataset) ,'val_warping_l1':val_warping_l1 / len(validation_loader.dataset),'val_warping_vgg': val_warping_vgg / len(validation_loader)}
+    log_images = {'Val/Image': (a[0].cpu() / 2 + 0.5), 
+    'Val/Pose Image': (pose_map[0].cpu() / 2 + 0.5), 
+    'Val/Clothing': (c[0].cpu() / 2+ 0.5), 
+    'Val/Parse Clothing': (b[0].cpu() / 2 + 0.5), 
+    'Val/Parse Clothing Mask': person_clothes_edge[0].cpu().expand(3, -1, -1), 
+    'Val/Warped Cloth': (e[0].cpu().detach() / 2 + 0.5), 
+    'Val/Warped Cloth Mask': f[0].cpu().detach().expand(3, -1, -1)}
+    log_results(log_images, log_losses, writer,wandb, epoch, train=False)
+
+def log_results(log_images, log_losses, board,wandb, step, iter_start_time=None, train=True):
+    table = 'Table' if train else 'Val_Table'
+    wandb_images = []
+    for key,value in log_losses.items():
+        board.add_scalar(key, value, step+1)
+        
+    for key,value in log_images.items():
+        board.add_image(key, value, step+1)
         if wandb is not None:
-            a = real_image.float().cuda()
-            b = person_clothes.cuda()
-            c = clothes.cuda()
-            d = torch.cat([densepose_fore.cuda(),densepose_fore.cuda(),densepose_fore.cuda()],1)
-            e = warped_cloth
-            f = torch.cat([warped_prod_edge,warped_prod_edge,warped_prod_edge],1)
-            combine = torch.cat([a[0],b[0],c[0],d[0],e[0],f[0]], 2).squeeze()
-            cv_img=(combine.permute(1,2,0).detach().cpu().numpy()+1)/2
-            writer.add_image('combine', (combine.data + 1) / 2.0, epoch)
-            writer.add_scalar('Val/loss_all', loss_all, epoch)
-            writer.add_scalar('Val/warping_l1', loss_l1, epoch)
-            writer.add_scalar('Val/warping_vgg', loss_vgg, epoch)
-            writer.add_image('Val/Real Image', a[0], 0)
-            writer.add_image('Val/Pose Image', (pose_map[0].cpu() / 2 + 0.5), 0)
-            writer.add_image('Val/Clothing', c[0], 0)
-            writer.add_image('Val/Parse Clothing', (b[0].cpu() / 2 + 0.5), 0)
-            writer.add_image('Val/Parse Clothing Mask', person_clothes_edge[0].cpu().expand(3, -1, -1), 0)
-            writer.add_image('Val/Warped Cloth', (e[0].cpu().detach() / 2 + 0.5), 0)
-            writer.add_image('Val/Warped Cloth Mask', (f[0].cpu().detach()).expand(3, -1, -1), 0)
-            if wandb is not None:
-                my_table = wandb.Table(columns=['Image', 'Pose Image','Clothing','Parse Clothing','Parse Clothing Mask','Warped Cloth','Warped Cloth Mask'])
-                real_image_wandb = get_wandb_image(a[0], wandb=wandb) # 'Image'
-                pose_image_wandb = get_wandb_image((pose_map[0].cpu() / 2 + 0.5),wandb) # 'Pose Image'
-                clothing_image_wandb = get_wandb_image(c[0], wandb=wandb)#'Clothing'
-                parse_clothing_wandb = get_wandb_image((b[0].cpu() / 2 + 0.5), wandb) # 'Parse Clothing'
-                parse_clothing_mask_wandb = get_wandb_image(person_clothes_edge[0].cpu().expand(3, -1, -1), wandb) # 'Parse Clothing Mask'
-                warped_cloth_wandb = get_wandb_image((e[0].cpu().detach() / 2 + 0.5), wandb) # 'Warped Cloth'
-                warped_cloth_mask_wandb = get_wandb_image((f[0].cpu().detach()).expand(3, -1, -1), wandb) # 'Warped Cloth Mask'
-                
-                my_table.add_data(real_image_wandb, pose_image_wandb, clothing_image_wandb, parse_clothing_wandb, parse_clothing_mask_wandb, warped_cloth_wandb, warped_cloth_mask_wandb)
-                
-                wandb.log({'val_warping_loss': loss_all,'val_warping_l1':loss_l1,'val_warping_vgg':loss_vgg,'Table':my_table })
-            rgb=(cv_img*255).astype(np.uint8)
-            bgr=cv2.cvtColor(rgb,cv2.COLOR_RGB2BGR)
-            cv2.imwrite(os.path.join(opt.results_dir, str(epoch)+'.jpg'),bgr)
+            wandb_images.append(get_wandb_image(value, wandb=wandb))
+
+    if wandb is not None:
+        my_table = wandb.Table(columns=['Image', 'Pose Image','Clothing','Parse Clothing','Parse Clothing Mask','Warped Cloth','Warped Cloth TACO','Warped Cloth Mask TVOB','Warped Cloth Mask TACO'])
+        my_table.add_data(*wandb_images)
+        wandb.log({table: my_table, **log_losses})
+    if train and iter_start_time is not None:
+        t = time.time() - iter_start_time
+        print("training step: %8d, time: %.3f\warping_loss: %.4f, warping_l1 loss: %.4f, VGG loss: %.4f"
+      % (step + 1, t, log_losses['warping_loss'], log_losses['warping_l1'], log_losses['warping_vgg']), flush=True)
+    else:
+        print("validation step: %8d,  warping_loss: %.4f, warping_l1 loss: %.4f, VGG loss: %.4f"
+      % (step + 1, log_losses['val_warping_loss'], log_losses['val_warping_l1'], log_losses['val_warping_vgg']), flush=True)

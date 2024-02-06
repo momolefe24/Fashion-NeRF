@@ -2,10 +2,9 @@ import torch
 import torch.nn as nn
 import torch.nn.parallel
 from torchvision import models
-from options.train_options import TrainOptions
+from VITON.Parser_Free.FS_VTON.train.options.train_options import TrainOptions
 import os
 
-opt = TrainOptions().parse()
 
 class ResidualBlock(nn.Module):
     def __init__(self, in_features=64, norm_layer=nn.BatchNorm2d):

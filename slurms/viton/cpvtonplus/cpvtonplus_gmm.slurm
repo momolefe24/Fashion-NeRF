@@ -21,24 +21,6 @@ nvidia-smi
 source ~/.bashrc
 conda activate NeRF
 echo "Launching the script ${SLURM_JOB_NAME}"
-# ./scripts/viton/viton.sh $SLURM_JOB_NAME {experiment_number}  {run_number} {experiment_from}  {run_number_from}
-# ./scripts/viton/viton.sh $SLURM_JOB_NAME 1 6 1 6
-
-# export EXPERIMENT_NUMBER=9
-# export EXPERIMENT_FROM_NUMBER=0
-# export RUN_NUMBER=99
-# export RUN_FROM_NUMBER=0
-# export SEED=1
-# export DATASET_NAME=Rail
-# export TASK="GMM"
-# export DEBUG=1
-# export SWEEPS=1
-# export DATAMODE=train
-# export WANDB=1
-# export DEVICE=0
-# export VITON_NAME=CP_VTON_plus
-
-
 echo "Start Debug: $DEBUG"
 echo "Experiment Number: $EXPERIMENT_NUMBER"
 echo "Run Number: $RUN_NUMBER"
@@ -53,5 +35,5 @@ export CUDA_VISIBLE_DEVICES=$DEVICE
   --VITON_Type Parser_Based --VITON_Name $VITON_NAME --VITON_Model $TASK --stage $TASK --load_last_step False  \
   --res low_res --dataset_name $DATASET_NAME  --run_wandb $WANDB \
   --low_res_dataset_name viton_plus \
-  --niter 10000 --niter_decay 10000 --display_count 100 --print_step 100 --save_period 100 --val_count 100 \
+  --niter 10000 --niter_decay 10000 --display_count 1000 --print_step 1000 --save_period 1000 --val_count 1000 \
   --viton_batch_size 4 --datamode $DATAMODE --debug $DEBUG --sweeps $SWEEPS --seed $SEED

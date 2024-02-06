@@ -214,7 +214,7 @@ def train_model(opt,root_opt, train_loader, test_loader, validation_loader, boar
         CE_loss = cross_entropy2d(fake_segmap, label_onehot.transpose(0, 1)[0].long())
         
         if opt.no_GAN_loss:
-            loss_G = (10 * loss_l1_cloth + loss_vgg + opt.tvlambda * loss_tv) + (CE_loss * opt.CElamda)
+            loss_G = (opt.loss_l1_cloth_lambda * loss_l1_cloth + loss_vgg + opt.tvlambda * loss_tv) + (CE_loss * opt.CElamda)
             # step
             optimizer_G.zero_grad()
             loss_G.backward()
@@ -272,57 +272,23 @@ def train_model(opt,root_opt, train_loader, test_loader, validation_loader, boar
                 optimizer_D.zero_grad()
                 loss_D.backward()
                 optimizer_D.step()
-        # Vaildation
-        if (step + 1) % opt.val_count == 0:
-            validate_tocg(opt, step, tocg,D, validation_loader,board,wandb)
-            tocg.train()
         
         # tensorboard
         if (step + 1) % opt.display_count == 0:
-            # loss G
-            board.add_scalar('warping_loss', loss_G.item(), step + 1)
-            board.add_scalar('warping_l1', loss_l1_cloth.item(), step + 1)
-            board.add_scalar('warping_vgg', loss_vgg.item(), step + 1)
-            board.add_scalar('warping_total_variation_loss', loss_tv.item(), step + 1)
-            board.add_scalar('warping_cross_entropy_loss', CE_loss.item(), step + 1)
-# Wandb     
-            if not opt.no_GAN_loss:
-                board.add_scalar('gan', loss_G_GAN.item(), step + 1)
-                # loss D
-                board.add_scalar('discriminator', loss_D.item(), step + 1)
-                board.add_scalar('pred_real', loss_D_real.item(), step + 1)
-                board.add_scalar('pred_fake', loss_D_fake.item(), step + 1)
             save_image(warped_cloth_paired, os.path.join(opt.results_dir, f'warped_cloth_paired_{step}.png'))
-            grid = make_grid([(c_paired[0].cpu() / 2 + 0.5), (cm_paired[0].cpu()).expand(3, -1, -1), visualize_segmap(parse_agnostic.cpu()), ((densepose.cpu()[0]+1)/2),
-                              (im_c[0].cpu() / 2 + 0.5), parse_cloth_mask[0].cpu().expand(3, -1, -1), (warped_cloth_paired[0].cpu().detach() / 2 + 0.5), (warped_cm_onehot[0].cpu().detach()).expand(3, -1, -1),
-                              visualize_segmap(label.cpu()), visualize_segmap(fake_segmap.cpu()), (im[0]/2 +0.5), (misalign[0].cpu().detach()).expand(3, -1, -1)],
-                                nrow=4)
-            board.add_images('train_images', grid.unsqueeze(0), step + 1)
-            board.add_image('Image', (im_c[0].cpu() / 2 + 0.5), 0)
-            board.add_image('Pose Image', (openpose[0].cpu() / 2 + 0.5), 0)
-            board.add_image('Clothing', (c_paired[0].cpu() / 2 + 0.5), 0)
-            board.add_image('Parse Clothing', (im_c[0].cpu() / 2 + 0.5), 0)
-            board.add_image('Parse Clothing Mask', parse_cloth_mask[0].cpu().expand(3, -1, -1), 0)
-            board.add_image('Warped Cloth', (warped_cloth_paired[0].cpu().detach() / 2 + 0.5), 0)
-            board.add_image('Warped Cloth Mask', warped_clothmask_paired[0].cpu().detach().expand(3, -1, -1), 0)
-            if wandb is not None:
-                my_table = wandb.Table(columns=['Image', 'Pose Image','Clothing','Parse Clothing','Parse Clothing Mask','Warped Cloth','Warped Cloth Mask'])
-                grid_wandb = get_wandb_image(grid, wandb)
-                image_wandb = get_wandb_image((im_c[0].cpu() / 2 + 0.5),wandb) # 'Image'
-                pose_image_wandb = get_wandb_image((openpose[0].cpu() / 2 + 0.5),wandb) # 'Pose Image'
-                clothing_wandb = get_wandb_image((c_paired[0].cpu() / 2 + 0.5), wandb) # 'Clothing'
-                parse_clothing_wandb = get_wandb_image((im_c[0].cpu() / 2 + 0.5), wandb) # 'Parse Clothing'
-                parse_clothing_mask_wandb = get_wandb_image(parse_cloth_mask[0].cpu().expand(3, -1, -1), wandb) # 'Parse Clothing Mask'
-                warped_cloth_wandb = get_wandb_image((warped_cloth_paired[0].cpu().detach() / 2 + 0.5), wandb) # 'Warped Cloth'
-                warped_clothmask_paired_wandb = get_wandb_image((warped_clothmask_paired[0].cpu().detach()).expand(3, -1, -1), wandb) # 'Warped Cloth Mask'
-                my_table.add_data(image_wandb, pose_image_wandb, clothing_wandb, parse_clothing_wandb, parse_clothing_mask_wandb, warped_cloth_wandb,warped_clothmask_paired_wandb)
-                wandb.log({'Table': my_table, 
-                'warping_loss': loss_G.item()
-                ,'warping_l1':loss_l1_cloth.item()
-                ,'warping_vgg':loss_vgg.item()
-                ,'warping_total_variation_loss':loss_tv.item()
-                ,'warping_cross_entropy_loss':CE_loss.item()})
-            
+            log_losses = {'warping_loss': loss_G.item() ,'warping_l1': loss_l1_cloth.item(),'warping_vgg': loss_vgg.item(),
+            'warping_total_variation_loss': loss_tv.item(),'warping_cross_entropy_loss': CE_loss.item()}
+            # Wandb     
+            if not opt.no_GAN_loss:
+                log_losses.update({'gan': loss_G_GAN.item(),'discriminator': loss_D.item(),'pred_real': loss_D_real.item(),'pred_fake': loss_D_fake.item()})
+            log_images = {'Image': (im_c[0].cpu() / 2 + 0.5), 
+            'Pose Image': (openpose[0].cpu() / 2 + 0.5), 
+            'Clothing': (c_paired[0].cpu() / 2 + 0.5), 
+            'Parse Clothing': (im_c[0].cpu() / 2 + 0.5), 
+            'Parse Clothing Mask': parse_cloth_mask[0].cpu().expand(3, -1, -1), 
+            'Warped Cloth': (warped_cloth_paired[0].cpu().detach() / 2 + 0.5), 
+            'Warped Cloth Mask': warped_clothmask_paired[0].cpu().detach().expand(3, -1, -1)}
+            log_results(log_images, log_losses, board,wandb, step, iter_start_time=iter_start_time, train=True)
             inputs = test_loader.next_batch()
             c_paired = inputs['cloth'][opt.test_datasetting].cuda()
             cm_paired = inputs['cloth_mask'][opt.test_datasetting].cuda()
@@ -369,14 +335,39 @@ def train_model(opt,root_opt, train_loader, test_loader, validation_loader, boar
                 misalign[misalign < 0.0] = 0.0
                 tocg.train()
         
+        if (step + 1) % opt.val_count == 0:
+            validate_tocg(opt, step, tocg,D, validation_loader,board,wandb)
+            tocg.train()
         # display
         if (step + 1) % opt.save_period == 0:
             t = time.time() - iter_start_time
-            print("step: %8d, time: %.3f\nloss G: %.4f, L1_cloth loss: %.4f, VGG loss: %.4f, TV loss: %.4f CE: %.4f, G GAN: %.4f\nloss D: %.4f, D real: %.4f, D fake: %.4f"
-                % (step + 1, t, loss_G.item(), loss_l1_cloth.item(), loss_vgg.item(), loss_tv.item(), CE_loss.item(), loss_G_GAN.item(), loss_D.item(), loss_D_real.item(), loss_D_fake.item()), flush=True)
+            print('Saving checkpoint: %8d, time: %.3f, G_checkpoint: %s, D_checkpoint: %s' % (step+1, t, opt.tocg_save_step_checkpoint % (step + 1), opt.tocg_discriminator_save_step_checkpoint % (step+1)), flush=True)
             save_checkpoint(tocg,opt.tocg_save_step_checkpoint % (step + 1), opt)
             save_checkpoint(D,opt.tocg_discriminator_save_step_checkpoint % (step + 1), opt)
 
+def log_results(log_images, log_losses, board,wandb, step, iter_start_time=None, train=True):
+    table = 'Table' if train else 'Val_Table'
+    wandb_images = []
+    for key,value in log_losses.items():
+        board.add_scalar(key, value, step+1)
+        
+    for key,value in log_images.items():
+        board.add_image(key, value, step+1)
+        if wandb is not None:
+            wandb_images.append(get_wandb_image(value, wandb=wandb))
+
+    if wandb is not None:
+        my_table = wandb.Table(columns=['Image', 'Pose Image','Clothing','Parse Clothing','Parse Clothing Mask','Warped Cloth','Warped Cloth Mask'])
+        my_table.add_data(*wandb_images)
+        wandb.log({table: my_table, **log_losses})
+    if train and iter_start_time is not None:
+        t = time.time() - iter_start_time
+        print("training step: %8d, time: %.3f\nloss G: %.4f, L1_cloth loss: %.4f, VGG loss: %.4f, TV loss: %.4f CE: %.4f, G GAN: %.4f\nloss D: %.4f, D real: %.4f, D fake: %.4f"
+                % (step + 1, t, log_losses['warping_loss'], log_losses['warping_l1'], log_losses['warping_vgg'], log_losses['warping_total_variation_loss'], log_losses['warping_cross_entropy_loss'], log_losses['gan'], log_losses['discriminator'], log_losses['pred_real'], log_losses['pred_fake']), flush=True)
+    else:
+        print("validation step: %8d, loss G: %.4f, L1_cloth loss: %.4f, VGG loss: %.4f, TV loss: %.4f CE: %.4f, G GAN: %.4f"
+                % (step + 1,  log_losses['val_warping_loss'], log_losses['val_warping_l1'], log_losses['val_warping_vgg'], log_losses['val_warping_total_variation_loss'], log_losses['val_warping_cross_entropy_loss'], log_losses['val_gan']), flush=True)
+        
 def validate_tocg(opt, step, tocg,D, validation_loader,board,wandb):
     tocg.eval()
     # criterion
@@ -393,8 +384,16 @@ def validate_tocg(opt, step, tocg,D, validation_loader,board,wandb):
     tocg = DataParallelWithCallback(tocg, device_ids=[opt.device])
     D = DataParallelWithCallback(D, device_ids=[opt.device])
     iou_list = []
+    val_warping_loss =  0
+    val_warping_l1 = 0
+    val_warping_vgg= 0 
+    val_warping_cross_entropy_loss =0
+    val_warping_total_variation_loss = 0
+    val_gan = 0
+    total_batches = len(validation_loader.dataset) // opt.viton_batch_size
+    processed_batches = 0
     with torch.no_grad():
-        for cnt in range(20//opt.viton_batch_size):
+        while processed_batches < total_batches:
             inputs = validation_loader.next_batch()
             if root_opt.cuda:
                 # input1
@@ -427,76 +426,62 @@ def validate_tocg(opt, step, tocg,D, validation_loader,board,wandb):
             # visualization
             im = inputs['image']
             
-        # inputs
-        if len(cm_paired.size()) == 5:
-            cm_paired = cm_paired.squeeze(1)
-            cm_paired = cm_paired.permute(0,3,1,2)
-        input1 = torch.cat([c_paired, cm_paired], 1)
-        input2 = torch.cat([parse_agnostic, densepose], 1)
+            # inputs
+            if len(cm_paired.size()) == 5:
+                cm_paired = cm_paired.squeeze(1)
+                cm_paired = cm_paired.permute(0,3,1,2)
+            input1 = torch.cat([c_paired, cm_paired], 1)
+            input2 = torch.cat([parse_agnostic, densepose], 1)
 
-        # forward
-        if opt.segment_anything and step >= (opt.niter + opt.niter_decay) // 3:
-            flow_list, fake_segmap, warped_cloth_paired, warped_clothmask_paired = tocg(opt, input1, input2, im_c=im_c)
-        else:
-            flow_list, fake_segmap, warped_cloth_paired, warped_clothmask_paired = tocg(opt, input1, input2)
-        
-        warped_cm_onehot = torch.FloatTensor((warped_clothmask_paired.detach().cpu().numpy() > 0.5).astype(np.float32)).cuda()
-        # fake segmap cloth channel * warped clothmask
-        if opt.clothmask_composition != 'no_composition':
-            if opt.clothmask_composition == 'detach':
-                cloth_mask = torch.ones_like(fake_segmap.detach())
-                cloth_mask[:, 3:4, :, :] = warped_cm_onehot
-                fake_segmap = fake_segmap * cloth_mask
-                
-            if opt.clothmask_composition == 'warp_grad':
-                cloth_mask = torch.ones_like(fake_segmap.detach())
-                cloth_mask[:, 3:4, :, :] = warped_clothmask_paired
-                fake_segmap = fake_segmap * cloth_mask
-        
-        if opt.occlusion:
-            warped_clothmask_paired = remove_overlap(F.softmax(fake_segmap, dim=1), warped_clothmask_paired)
-            warped_cloth_paired = warped_cloth_paired * warped_clothmask_paired + torch.ones_like(warped_cloth_paired) * (1-warped_clothmask_paired)
-        if opt.clip_warping:
-            warped_cloth_paired = warped_cloth_paired * parse_cloth_mask + torch.ones_like(warped_cloth_paired) * (1 - parse_cloth_mask)
-        # generated fake cloth mask & misalign mask
-        fake_clothmask = (torch.argmax(fake_segmap.detach(), dim=1, keepdim=True) == 3).long()
-        misalign = fake_clothmask - warped_cm_onehot
-        misalign[misalign < 0.0] = 0.0
-        
-        # loss warping
-        loss_l1_cloth = criterionL1(warped_clothmask_paired, parse_cloth_mask)
-        loss_vgg = criterionVGG(warped_cloth_paired, im_c)
-
-        loss_tv = 0
-        
-        if opt.edgeawaretv == 'no_edge':
-            if not opt.lasttvonly:
-                for flow in flow_list:
-                    y_tv = torch.abs(flow[:, 1:, :, :] - flow[:, :-1, :, :]).mean()
-                    x_tv = torch.abs(flow[:, :, 1:, :] - flow[:, :, :-1, :]).mean()
-                    loss_tv = loss_tv + y_tv + x_tv
+            # forward
+            if opt.segment_anything and step >= (opt.niter + opt.niter_decay) // 3:
+                flow_list, fake_segmap, warped_cloth_paired, warped_clothmask_paired = tocg(opt, input1, input2, im_c=im_c)
             else:
-                for flow in flow_list[-1:]:
-                    y_tv = torch.abs(flow[:, 1:, :, :] - flow[:, :-1, :, :]).mean()
-                    x_tv = torch.abs(flow[:, :, 1:, :] - flow[:, :, :-1, :]).mean()
-                    loss_tv = loss_tv + y_tv + x_tv
-        else:
-            if opt.edgeawaretv == 'last_only':
-                flow = flow_list[-1]
-                warped_clothmask_paired_down = F.interpolate(warped_clothmask_paired, flow.shape[1:3], mode='bilinear')
-                y_tv = torch.abs(flow[:, 1:, :, :] - flow[:, :-1, :, :])
-                x_tv = torch.abs(flow[:, :, 1:, :] - flow[:, :, :-1, :])
-                mask_y = torch.exp(-150*torch.abs(warped_clothmask_paired_down.permute(0, 2, 3, 1)[:, 1:, :, :] - warped_clothmask_paired_down.permute(0, 2, 3, 1)[:, :-1, :, :]))
-                mask_x = torch.exp(-150*torch.abs(warped_clothmask_paired_down.permute(0, 2, 3, 1)[:, :, 1:, :] - warped_clothmask_paired_down.permute(0, 2, 3, 1)[:, :, :-1, :]))
-                y_tv = y_tv * mask_y
-                x_tv = x_tv * mask_x
-                y_tv = y_tv.mean()
-                x_tv = x_tv.mean()
-                loss_tv = loss_tv + y_tv + x_tv
-                
-            elif opt.edgeawaretv == 'weighted':
-                for i in range(5):
-                    flow = flow_list[i]
+                flow_list, fake_segmap, warped_cloth_paired, warped_clothmask_paired = tocg(opt, input1, input2)
+            
+            warped_cm_onehot = torch.FloatTensor((warped_clothmask_paired.detach().cpu().numpy() > 0.5).astype(np.float32)).cuda()
+            # fake segmap cloth channel * warped clothmask
+            if opt.clothmask_composition != 'no_composition':
+                if opt.clothmask_composition == 'detach':
+                    cloth_mask = torch.ones_like(fake_segmap.detach())
+                    cloth_mask[:, 3:4, :, :] = warped_cm_onehot
+                    fake_segmap = fake_segmap * cloth_mask
+                    
+                if opt.clothmask_composition == 'warp_grad':
+                    cloth_mask = torch.ones_like(fake_segmap.detach())
+                    cloth_mask[:, 3:4, :, :] = warped_clothmask_paired
+                    fake_segmap = fake_segmap * cloth_mask
+            
+            if opt.occlusion:
+                warped_clothmask_paired = remove_overlap(F.softmax(fake_segmap, dim=1), warped_clothmask_paired)
+                warped_cloth_paired = warped_cloth_paired * warped_clothmask_paired + torch.ones_like(warped_cloth_paired) * (1-warped_clothmask_paired)
+            if opt.clip_warping:
+                warped_cloth_paired = warped_cloth_paired * parse_cloth_mask + torch.ones_like(warped_cloth_paired) * (1 - parse_cloth_mask)
+            # generated fake cloth mask & misalign mask
+            fake_clothmask = (torch.argmax(fake_segmap.detach(), dim=1, keepdim=True) == 3).long()
+            misalign = fake_clothmask - warped_cm_onehot
+            misalign[misalign < 0.0] = 0.0
+            
+            # loss warping
+            loss_l1_cloth = criterionL1(warped_clothmask_paired, parse_cloth_mask)
+            loss_vgg = criterionVGG(warped_cloth_paired, im_c)
+
+            loss_tv = 0
+            
+            if opt.edgeawaretv == 'no_edge':
+                if not opt.lasttvonly:
+                    for flow in flow_list:
+                        y_tv = torch.abs(flow[:, 1:, :, :] - flow[:, :-1, :, :]).mean()
+                        x_tv = torch.abs(flow[:, :, 1:, :] - flow[:, :, :-1, :]).mean()
+                        loss_tv = loss_tv + y_tv + x_tv
+                else:
+                    for flow in flow_list[-1:]:
+                        y_tv = torch.abs(flow[:, 1:, :, :] - flow[:, :-1, :, :]).mean()
+                        x_tv = torch.abs(flow[:, :, 1:, :] - flow[:, :, :-1, :]).mean()
+                        loss_tv = loss_tv + y_tv + x_tv
+            else:
+                if opt.edgeawaretv == 'last_only':
+                    flow = flow_list[-1]
                     warped_clothmask_paired_down = F.interpolate(warped_clothmask_paired, flow.shape[1:3], mode='bilinear')
                     y_tv = torch.abs(flow[:, 1:, :, :] - flow[:, :-1, :, :])
                     x_tv = torch.abs(flow[:, :, 1:, :] - flow[:, :, :-1, :])
@@ -504,118 +489,111 @@ def validate_tocg(opt, step, tocg,D, validation_loader,board,wandb):
                     mask_x = torch.exp(-150*torch.abs(warped_clothmask_paired_down.permute(0, 2, 3, 1)[:, :, 1:, :] - warped_clothmask_paired_down.permute(0, 2, 3, 1)[:, :, :-1, :]))
                     y_tv = y_tv * mask_y
                     x_tv = x_tv * mask_x
-                    y_tv = y_tv.mean() / (2 ** (4-i))
-                    x_tv = x_tv.mean() / (2 ** (4-i))
+                    y_tv = y_tv.mean()
+                    x_tv = x_tv.mean()
                     loss_tv = loss_tv + y_tv + x_tv
+                    
+                elif opt.edgeawaretv == 'weighted':
+                    for i in range(5):
+                        flow = flow_list[i]
+                        warped_clothmask_paired_down = F.interpolate(warped_clothmask_paired, flow.shape[1:3], mode='bilinear')
+                        y_tv = torch.abs(flow[:, 1:, :, :] - flow[:, :-1, :, :])
+                        x_tv = torch.abs(flow[:, :, 1:, :] - flow[:, :, :-1, :])
+                        mask_y = torch.exp(-150*torch.abs(warped_clothmask_paired_down.permute(0, 2, 3, 1)[:, 1:, :, :] - warped_clothmask_paired_down.permute(0, 2, 3, 1)[:, :-1, :, :]))
+                        mask_x = torch.exp(-150*torch.abs(warped_clothmask_paired_down.permute(0, 2, 3, 1)[:, :, 1:, :] - warped_clothmask_paired_down.permute(0, 2, 3, 1)[:, :, :-1, :]))
+                        y_tv = y_tv * mask_y
+                        x_tv = x_tv * mask_x
+                        y_tv = y_tv.mean() / (2 ** (4-i))
+                        x_tv = x_tv.mean() / (2 ** (4-i))
+                        loss_tv = loss_tv + y_tv + x_tv
 
-            if opt.tocg_add_lasttv:
-                for flow in flow_list[-1:]:
-                    y_tv = torch.abs(flow[:, 1:, :, :] - flow[:, :-1, :, :]).mean()
-                    x_tv = torch.abs(flow[:, :, 1:, :] - flow[:, :, :-1, :]).mean()
-                    loss_tv = loss_tv + y_tv + x_tv
-            
-
-        N, _, iH, iW = c_paired.size()
-        # Intermediate flow loss
-        if opt.interflowloss:
-            for i in range(len(flow_list)-1):
-                flow = flow_list[i]
-                N, fH, fW, _ = flow.size()
-                grid = mkgrid(N, iH, iW, opt)
-                flow = F.interpolate(flow.permute(0, 3, 1, 2), size = c_paired.shape[2:], mode=opt.upsample).permute(0, 2, 3, 1)
-                flow_norm = torch.cat([flow[:, :, :, 0:1] / ((fW - 1.0) / 2.0), flow[:, :, :, 1:2] / ((fH - 1.0) / 2.0)], 3)
-                warped_c = F.grid_sample(c_paired, flow_norm + grid, padding_mode='border')
-                warped_cm = F.grid_sample(cm_paired, flow_norm + grid, padding_mode='border')
-                warped_cm = remove_overlap(F.softmax(fake_segmap, dim=1), warped_cm)
-                loss_l1_cloth += criterionL1(warped_cm, parse_cloth_mask) / (2 ** (4-i))
-                loss_vgg += criterionVGG(warped_c, im_c) / (2 ** (4-i))
-        # loss segmentation
-        # generator
-        CE_loss = cross_entropy2d(fake_segmap, label_onehot.transpose(0, 1)[0].long())
-        
-        if opt.no_GAN_loss:
-            loss_G = (10 * loss_l1_cloth + loss_vgg + opt.tvlambda * loss_tv) + (CE_loss * opt.CElamda)
-        else:
-            fake_segmap_softmax = torch.softmax(fake_segmap, 1)
-            pred_segmap = D(torch.cat((input1.detach(), input2.detach(), fake_segmap_softmax), dim=1))
-            loss_G_GAN = criterionGAN(pred_segmap, True)      
-            if not opt.G_D_seperate:  
-                # discriminator
-                fake_segmap_pred = D(torch.cat((input1.detach(), input2.detach(), fake_segmap_softmax.detach()),dim=1))
-                real_segmap_pred = D(torch.cat((input1.detach(), input2.detach(), label),dim=1))
-                loss_D_fake = criterionGAN(fake_segmap_pred, False)
-                loss_D_real = criterionGAN(real_segmap_pred, True)
-
-                # loss sum
-                loss_G = (opt.loss_l1_cloth_lambda * loss_l1_cloth + loss_vgg +opt.tvlambda * loss_tv) + (CE_loss * opt.CElamda + loss_G_GAN * opt.GANlambda)  # warping + seg_generation
-                loss_D = loss_D_fake + loss_D_real
+                if opt.tocg_add_lasttv:
+                    for flow in flow_list[-1:]:
+                        y_tv = torch.abs(flow[:, 1:, :, :] - flow[:, :-1, :, :]).mean()
+                        x_tv = torch.abs(flow[:, :, 1:, :] - flow[:, :, :-1, :]).mean()
+                        loss_tv = loss_tv + y_tv + x_tv
                 
-            else: # train G first after that train D
-                # loss G sum
-                loss_G = (opt.loss_l1_cloth_lambda * loss_l1_cloth + loss_vgg + opt.tvlambda * loss_tv) + (CE_loss * opt.CElamda + loss_G_GAN * opt.GANlambda)  # warping + seg_generation
+
+            N, _, iH, iW = c_paired.size()
+            # Intermediate flow loss
+            if opt.interflowloss:
+                for i in range(len(flow_list)-1):
+                    flow = flow_list[i]
+                    N, fH, fW, _ = flow.size()
+                    grid = mkgrid(N, iH, iW, opt)
+                    flow = F.interpolate(flow.permute(0, 3, 1, 2), size = c_paired.shape[2:], mode=opt.upsample).permute(0, 2, 3, 1)
+                    flow_norm = torch.cat([flow[:, :, :, 0:1] / ((fW - 1.0) / 2.0), flow[:, :, :, 1:2] / ((fH - 1.0) / 2.0)], 3)
+                    warped_c = F.grid_sample(c_paired, flow_norm + grid, padding_mode='border')
+                    warped_cm = F.grid_sample(cm_paired, flow_norm + grid, padding_mode='border')
+                    warped_cm = remove_overlap(F.softmax(fake_segmap, dim=1), warped_cm)
+                    loss_l1_cloth += criterionL1(warped_cm, parse_cloth_mask) / (2 ** (4-i))
+                    loss_vgg += criterionVGG(warped_c, im_c) / (2 ** (4-i))
+            # loss segmentation
+            # generator
+            CE_loss = cross_entropy2d(fake_segmap, label_onehot.transpose(0, 1)[0].long())
             
-                
-                # discriminator
-                with torch.no_grad():
-                    _, fake_segmap, _, _ = tocg(opt, input1, input2)
+            if opt.no_GAN_loss:
+                loss_G = (10 * loss_l1_cloth + loss_vgg + opt.tvlambda * loss_tv) + (CE_loss * opt.CElamda)
+            else:
                 fake_segmap_softmax = torch.softmax(fake_segmap, 1)
+                pred_segmap = D(torch.cat((input1.detach(), input2.detach(), fake_segmap_softmax), dim=1))
+                loss_G_GAN = criterionGAN(pred_segmap, True)      
+                if not opt.G_D_seperate:  
+                    # discriminator
+                    fake_segmap_pred = D(torch.cat((input1.detach(), input2.detach(), fake_segmap_softmax.detach()),dim=1))
+                    real_segmap_pred = D(torch.cat((input1.detach(), input2.detach(), label),dim=1))
+                    loss_D_fake = criterionGAN(fake_segmap_pred, False)
+                    loss_D_real = criterionGAN(real_segmap_pred, True)
+
+                    # loss sum
+                    loss_G = (opt.loss_l1_cloth_lambda * loss_l1_cloth + loss_vgg +opt.tvlambda * loss_tv) + (CE_loss * opt.CElamda + loss_G_GAN * opt.GANlambda)  # warping + seg_generation
+                    loss_D = loss_D_fake + loss_D_real
+                    
+                else: # train G first after that train D
+                    # loss G sum
+                    loss_G = (opt.loss_l1_cloth_lambda * loss_l1_cloth + loss_vgg + opt.tvlambda * loss_tv) + (CE_loss * opt.CElamda + loss_G_GAN * opt.GANlambda)  # warping + seg_generation
                 
-                # loss discriminator
-                fake_segmap_pred = D(torch.cat((input1.detach(), input2.detach(), fake_segmap_softmax.detach()),dim=1))
-                real_segmap_pred = D(torch.cat((input1.detach(), input2.detach(), label),dim=1))
-                loss_D_fake = criterionGAN(fake_segmap_pred, False)
-                loss_D_real = criterionGAN(real_segmap_pred, True)
-                
-                loss_D = loss_D_fake + loss_D_real
-                
-        board.add_scalar('Val/warping_loss', loss_G.item(), step + 1)
-        board.add_scalar('Val/warping_l1', loss_l1_cloth.item(), step + 1)
-        board.add_scalar('Val/warping_vgg', loss_vgg.item(), step + 1)
-        board.add_scalar('Val/warping_total_variation_loss', loss_tv.item(), step + 1)
-        board.add_scalar('Val/warping_cross_entropy_loss', CE_loss.item(), step + 1)
-# Wandb     
-        if not opt.no_GAN_loss:
-            board.add_scalar('Val/gan', loss_G_GAN.item(), step + 1)
-            # loss D
-            board.add_scalar('Val/discriminator', loss_D.item(), step + 1)
-            board.add_scalar('Val/pred_real', loss_D_real.item(), step + 1)
-            board.add_scalar('Val/pred_fake', loss_D_fake.item(), step + 1)
+                    
+                    # discriminator
+                    with torch.no_grad():
+                        _, fake_segmap, _, _ = tocg(opt, input1, input2)
+                    fake_segmap_softmax = torch.softmax(fake_segmap, 1)
+                    
+                    # loss discriminator
+                    fake_segmap_pred = D(torch.cat((input1.detach(), input2.detach(), fake_segmap_softmax.detach()),dim=1))
+                    real_segmap_pred = D(torch.cat((input1.detach(), input2.detach(), label),dim=1))
+                    loss_D_fake = criterionGAN(fake_segmap_pred, False)
+                    loss_D_real = criterionGAN(real_segmap_pred, True)
+                    
+                    loss_D = loss_D_fake + loss_D_real
+            val_warping_loss += loss_G.item()
+            val_warping_l1 += loss_l1_cloth.item()
+            val_warping_vgg += loss_vgg.item()
+            val_warping_total_variation_loss += loss_tv.item()
+            val_warping_cross_entropy_loss += CE_loss.item()
+            val_gan +=  loss_G_GAN.item()
+            processed_batches += 1
         save_image(warped_cloth_paired, os.path.join(opt.results_dir,'val', f'warped_cloth_paired_{step}.png'))
-        grid = make_grid([(c_paired[0].cpu() / 2 + 0.5), (cm_paired[0].cpu()).expand(3, -1, -1), visualize_segmap(parse_agnostic.cpu()), ((densepose.cpu()[0]+1)/2),
-                            (im_c[0].cpu() / 2 + 0.5), parse_cloth_mask[0].cpu().expand(3, -1, -1), (warped_cloth_paired[0].cpu().detach() / 2 + 0.5), (warped_cm_onehot[0].cpu().detach()).expand(3, -1, -1),
-                            visualize_segmap(label.cpu()), visualize_segmap(fake_segmap.cpu()), (im[0]/2 +0.5), (misalign[0].cpu().detach()).expand(3, -1, -1)],
-                            nrow=4)
-        board.add_images('valid_images', grid.unsqueeze(0), step + 1)
-        board.add_image('Val/Image', (im_c[0].cpu() / 2 + 0.5), 0)
-        board.add_image('Val/Pose Image', (openpose[0].cpu() / 2 + 0.5), 0)
-        board.add_image('Val/Clothing', (c_paired[0].cpu() / 2 + 0.5), 0)
-        board.add_image('Val/Parse Clothing', (im_c[0].cpu() / 2 + 0.5), 0)
-        board.add_image('Val/Parse Clothing Mask', parse_cloth_mask[0].cpu().expand(3, -1, -1), 0)
-        board.add_image('Val/Warped Cloth', (warped_cloth_paired[0].cpu().detach() / 2 + 0.5), 0)
-        board.add_image('Val/Warped Cloth Mask', warped_clothmask_paired[0].cpu().detach().expand(3, -1, -1), 0)
-        if wandb is not None:
-            my_table = wandb.Table(columns=['Image', 'Pose Image','Clothing','Parse Clothing','Parse Clothing Mask','Warped Cloth','Warped Cloth Mask'])
-            image_wandb = get_wandb_image((im_c[0].cpu() / 2 + 0.5),wandb) # 'Image'
-            pose_image_wandb = get_wandb_image((openpose[0].cpu() / 2 + 0.5),wandb) # 'Pose Image'
-            clothing_wandb = get_wandb_image((c_paired[0].cpu() / 2 + 0.5), wandb) # 'Clothing'
-            parse_clothing_wandb = get_wandb_image((im_c[0].cpu() / 2 + 0.5), wandb) # 'Parse Clothing'
-            parse_clothing_mask_wandb = get_wandb_image(parse_cloth_mask[0].cpu().expand(3, -1, -1), wandb) # 'Parse Clothing Mask'
-            warped_cloth_wandb = get_wandb_image((warped_cloth_paired[0].cpu().detach() / 2 + 0.5), wandb) # 'Warped Cloth'
-            warped_clothmask_paired_wandb = get_wandb_image((warped_clothmask_paired[0].cpu().detach()).expand(3, -1, -1), wandb) # 'Warped Cloth Mask'
-            my_table.add_data(image_wandb, pose_image_wandb, clothing_wandb, parse_clothing_wandb, parse_clothing_mask_wandb, warped_cloth_wandb,warped_clothmask_paired_wandb)
-            wandb.log({'Val_Table': my_table, 'val_warping_loss': loss_G.item()
-            ,'val_warping_l1':loss_l1_cloth.item()
-            ,'val_warping_vgg':loss_vgg.item()
-            ,'val_warping_total_variation_loss':loss_tv.item()
-            ,'val_warping_cross_entropy_loss':CE_loss.item()})
+        log_losses = {'val_warping_loss': val_warping_loss / len(validation_loader.dataset) ,
+                    'val_warping_l1': val_warping_l1 / len(validation_loader.dataset),
+                    'val_warping_vgg': val_warping_vgg / len(validation_loader.dataset),
+                        'val_warping_total_variation_loss': val_warping_total_variation_loss / len(validation_loader.dataset),
+                        'val_warping_cross_entropy_loss': val_warping_cross_entropy_loss / len(validation_loader.dataset)}
+        
+        if not opt.no_GAN_loss:
+            log_losses.update({'val_gan': val_gan / len(validation_loader.dataset)})
+        log_images = {'Val/Image': (im_c[0].cpu() / 2 + 0.5), 
+        'Val/Pose Image': (openpose[0].cpu() / 2 + 0.5), 
+        'Val/Clothing': (c_paired[0].cpu() / 2 + 0.5), 
+        'Val/Parse Clothing': (im_c[0].cpu() / 2 + 0.5), 
+        'Val/Parse Clothing Mask': parse_cloth_mask[0].cpu().expand(3, -1, -1), 
+        'Val/Warped Cloth': (warped_cloth_paired[0].cpu().detach() / 2 + 0.5), 
+        'Val/Warped Cloth Mask': warped_clothmask_paired[0].cpu().detach().expand(3, -1, -1)}
+        log_results(log_images, log_losses, board,wandb, step, train=False)
             
         # calculate iou
         iou = iou_metric(F.softmax(fake_segmap, dim=1).detach(), label)
         iou_list.append(iou.item())
-        wandb.log({'val_iou':np.mean(iou_list) })
-        board.add_scalar('val_iou', np.mean(iou_list), step + 1)  
-        print("validation step: %8d \nloss G: %.4f, L1_cloth loss: %.4f, VGG loss: %.4f, TV loss: %.4f CE: %.4f, G GAN: %.4f\nloss D: %.4f, D real: %.4f, D fake: %.4f"
-                % (step + 1, loss_G.item(), loss_l1_cloth.item(), loss_vgg.item(), loss_tv.item(), CE_loss.item(), loss_G_GAN.item(), loss_D.item(), loss_D_real.item(), loss_D_fake.item()), flush=True)
         print()
         
 def print_log(log_path, content, to_print=True):
@@ -681,7 +659,7 @@ def _train_hrviton_tocg_():
     global opt, root_opt, wandb,sweep_id
     make_dirs(opt)
     board = SummaryWriter(log_dir = opt.tensorboard_dir)
-    torch.cuda.set_device(opt.device)
+    torch.cuda.set_device(f'cuda:{opt.device}')
     if sweep_id is not None:
         opt.lr = wandb.config.lr
         opt.momentum = wandb.config.momentum
